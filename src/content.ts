@@ -45,6 +45,7 @@ interface Filters {
   titleContains?: string;
   channelName?: string;
   isWatched?: boolean;
+  deleteUnavailable?: boolean; // New filter for private/deleted videos
   age?: AgeFilter;
 }
 
@@ -190,12 +191,15 @@ const downloadSummary = (summaryText: string, videoCount: number, isDryRun: bool
  */
 const extractVideoData = (videoElement: HTMLElement): VideoData | null => {
   const titleElement = videoElement.querySelector<HTMLElement>(SELECTORS.videoTitle);
-  const channelElement = videoElement.querySelector<HTMLElement>(SELECTORS.channelName);
-  if (!titleElement || !channelElement) {
+  if (!titleElement) { // Only return null if title is not found, as it's essential
     return null;
   }
   const title = titleElement.innerText.trim();
-  const channelName = channelElement.innerText.trim();
+
+  // Channel name might not exist for private/deleted videos, so handle gracefully
+  const channelElement = videoElement.querySelector<HTMLElement>(SELECTORS.channelName);
+  const channelName = channelElement ? channelElement.innerText.trim() : ''; // Default to empty string
+
   const isFullyWatched = videoElement.querySelector(SELECTORS.watchedOverlay) !== null;
   const isPartiallyWatched = videoElement.querySelector(SELECTORS.resumeOverlay) !== null;
   const isWatched = isFullyWatched || isPartiallyWatched;
@@ -239,12 +243,22 @@ const getVideosToDeleteAndReasons = (videos: VideoData[], filters: Filters, logi
   if (filters.age && filters.age.value) {
     filterAgeInDays = parseAgeToDays(`${filters.age.value} ${filters.age.unit}`);
   }
-  const activeFilterCount = [filters.isWatched, titleSearchTerms.length > 0, channelSearchTerms.length > 0, filterAgeInDays !== null].filter(Boolean).length;
+  
+  const activeFilterCount = [
+    filters.isWatched, 
+    filters.deleteUnavailable, // Include in active filter count
+    titleSearchTerms.length > 0, 
+    channelSearchTerms.length > 0, 
+    filterAgeInDays !== null
+  ].filter(Boolean).length;
 
   for (const video of videos) {
     const reasons: string[] = [];
     if (filters.isWatched && video.isWatched) {
       reasons.push('Is watched');
+    }
+    if (filters.deleteUnavailable && (video.title === '[Private video]' || video.title === '[Deleted video]')) {
+      reasons.push('Is unavailable ([Private video] or [Deleted video])');
     }
     if (titleSearchTerms.length > 0) {
       const foundTerm = titleSearchTerms.find(term => video.title.toLowerCase().includes(term));
@@ -333,6 +347,7 @@ const deleteVideosAndCreateSummary = async (candidates: DeletionCandidate[], fil
   } else {
     let criteriaHeader = `Search Criteria (Match ${logic}):\n`;
     if (filters.isWatched) criteriaHeader += `- Is Watched\n`;
+    if (filters.deleteUnavailable) criteriaHeader += `- Delete Unavailable Videos\n`; // Add to summary
     if (filters.titleContains) criteriaHeader += `- Title Contains: ${filters.titleContains}\n`;
     if (filters.channelName) criteriaHeader += `- Channel Contains: ${filters.channelName}\n`;
     if (filters.age) criteriaHeader += `- Older Than: ${filters.age.value} ${filters.age.unit}\n`;
@@ -432,6 +447,7 @@ const handleDeleteRequest = async (filters: Filters, logic: 'AND' | 'OR', isDryR
 // Listen for the message from the popup script.
 chrome.runtime.onMessage.addListener((request: { action: string, filters: Filters, logic: 'AND' | 'OR', isDryRun: boolean }, sender, sendResponse) => {
   if (request.action === 'deleteVideos') {
+    // Pass deleteUnavailable from request.filters to handleDeleteRequest
     handleDeleteRequest(request.filters, request.logic || 'OR', request.isDryRun || false);
     sendResponse({ status: 'started' });
     return true; // Indicates an asynchronous response.

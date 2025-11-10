@@ -11,6 +11,7 @@ A browser extension for Chrome and Edge that allows you to bulk-delete videos fr
     -   Search for exact phrases using double quotes (e.g., `"let's play"`).
 -   **Filter by Watched Status:** Automatically remove all videos that are marked as fully or partially watched.
 -   **Filter by Age:** Remove videos older than a specified number of days, weeks, months, or years.
+-   **Delete Unavailable Videos:** Automatically remove videos with titles like "[Private video]" or "[Deleted video]".
 -   **Dry Run Option:** Preview which videos would be deleted without actually removing them. This generates a report showing all matched videos and the reasons for their selection.
 -   **Safe and Transparent:**
     -   A **Cancel** button allows you to stop the operation at any time.
@@ -41,6 +42,7 @@ The extension icon will now appear in your browser's toolbar.
     -   **Title/Channel:** Enter keywords or quoted phrases.
     -   **Age:** Enter a number and select the time unit.
     -   **Watched:** Check the box to target watched videos.
+    -   **Delete Unavailable Videos:** Check this box to automatically remove videos that are marked as private or deleted.
     -   **Dry Run:** Check this box if you only want to generate a report of videos that *would* be deleted, without actually removing them.
 4.  **Start the Process:** Click the **"Delete Selected"** button.
 5.  **Wait:** The popup will close, and a "Cancel" button will appear on the page. The script will first scroll through the entire playlist to load all videos. This may take some time for very large playlists.

@@ -14,5 +14,4 @@ yarn-error.log*
 /dist/
 /node_modules/
 /.idea/
-/docs/
 .DS_Store

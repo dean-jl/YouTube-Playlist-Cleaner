@@ -42,14 +42,16 @@ document.addEventListener('DOMContentLoaded', () => {
         const titleContainsInput = getElementById('title-contains', HTMLInputElement);
         const channelNameInput = getElementById('channel-name', HTMLInputElement);
         const isWatchedCheckbox = getElementById('is-watched', HTMLInputElement);
-        const dryRunCheckbox = getElementById('dry-run', HTMLInputElement); // Get dry-run checkbox
+        const deleteUnavailableCheckbox = getElementById('delete-unavailable', HTMLInputElement); // Get delete-unavailable checkbox
+        const dryRunCheckbox = getElementById('dry-run', HTMLInputElement);
 
         const ageValueStr = ageValueInput?.value;
         const ageUnit = ageUnitSelect?.value;
         const titleContains = titleContainsInput?.value;
         const channelName = channelNameInput?.value;
         const isWatched = isWatchedCheckbox?.checked;
-        const isDryRun = dryRunCheckbox?.checked || false; // Get dry-run state
+        const deleteUnavailable = deleteUnavailableCheckbox?.checked || false; // Get delete-unavailable state
+        const isDryRun = dryRunCheckbox?.checked || false;
 
         if (ageValueStr) {
           const ageValue = parseInt(ageValueStr, 10);
@@ -63,6 +65,7 @@ document.addEventListener('DOMContentLoaded', () => {
           titleContains: titleContains,
           channelName: channelName,
           isWatched: isWatched,
+          deleteUnavailable: deleteUnavailable, // Include delete-unavailable state
           age: (ageValueStr && ageUnit) ? { value: parseInt(ageValueStr, 10), unit: ageUnit } : undefined,
         };
 
@@ -74,7 +77,7 @@ document.addEventListener('DOMContentLoaded', () => {
               action: 'deleteVideos',
               filters: filters,
               logic: logic,
-              isDryRun: isDryRun, // Include dry-run state
+              isDryRun: isDryRun,
             }, (response) => {
               if (chrome.runtime.lastError) {
                 console.error('Error sending message:', chrome.runtime.lastError.message);
