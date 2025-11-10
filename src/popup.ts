@@ -42,12 +42,14 @@ document.addEventListener('DOMContentLoaded', () => {
         const titleContainsInput = getElementById('title-contains', HTMLInputElement);
         const channelNameInput = getElementById('channel-name', HTMLInputElement);
         const isWatchedCheckbox = getElementById('is-watched', HTMLInputElement);
+        const dryRunCheckbox = getElementById('dry-run', HTMLInputElement); // Get dry-run checkbox
 
         const ageValueStr = ageValueInput?.value;
         const ageUnit = ageUnitSelect?.value;
         const titleContains = titleContainsInput?.value;
         const channelName = channelNameInput?.value;
         const isWatched = isWatchedCheckbox?.checked;
+        const isDryRun = dryRunCheckbox?.checked || false; // Get dry-run state
 
         if (ageValueStr) {
           const ageValue = parseInt(ageValueStr, 10);
@@ -64,7 +66,7 @@ document.addEventListener('DOMContentLoaded', () => {
           age: (ageValueStr && ageUnit) ? { value: parseInt(ageValueStr, 10), unit: ageUnit } : undefined,
         };
 
-        console.log('Sending filters to content script:', { filters, logic });
+        console.log('Sending filters to content script:', { filters, logic, isDryRun });
 
         chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
           if (tabs && tabs.length > 0 && tabs[0].id) {
@@ -72,6 +74,7 @@ document.addEventListener('DOMContentLoaded', () => {
               action: 'deleteVideos',
               filters: filters,
               logic: logic,
+              isDryRun: isDryRun, // Include dry-run state
             }, (response) => {
               if (chrome.runtime.lastError) {
                 console.error('Error sending message:', chrome.runtime.lastError.message);

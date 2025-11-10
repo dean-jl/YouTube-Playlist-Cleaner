@@ -1,19 +1,20 @@
-# YouTube Playlist Trimmer
+# YouTube Playlist Cleaner
 
 A browser extension for Chrome and Edge that allows you to bulk-delete videos from any of your YouTube playlists based on a powerful set of customizable filters.
 
 ## Features
 
-- **Works on Any Playlist:** Clean up your "Watch Later" list, public playlists, or your own private playlists.
-- **Flexible Filtering Logic:** Combine filters using either **AND** (all criteria must match) or **OR** (any criterion can match).
-- **Advanced Text Matching:**
-  - Search for multiple keywords in video titles or channel names (e.g., `news, politics`).
-  - Search for exact phrases using double quotes (e.g., `"let's play"`).
-- **Filter by Watched Status:** Automatically remove all videos that are marked as fully or partially watched.
-- **Filter by Age:** Remove videos older than a specified number of days, weeks, months, or years.
-- **Safe and Transparent:**
-  - A **Cancel** button allows you to stop the operation at any time.
-  - Generates a downloadable `.txt` summary file detailing exactly which videos were removed and why.
+-   **Works on Any Playlist:** Clean up your "Watch Later" list, public playlists, or your own private playlists.
+-   **Flexible Filtering Logic:** Combine filters using either **AND** (all criteria must match) or **OR** (any criterion can match).
+-   **Advanced Text Matching:**
+    -   Search for multiple keywords in video titles or channel names (e.g., `news, politics`).
+    -   Search for exact phrases using double quotes (e.g., `"let's play"`).
+-   **Filter by Watched Status:** Automatically remove all videos that are marked as fully or partially watched.
+-   **Filter by Age:** Remove videos older than a specified number of days, weeks, months, or years.
+-   **Dry Run Option:** Preview which videos would be deleted without actually removing them. This generates a report showing all matched videos and the reasons for their selection.
+-   **Safe and Transparent:**
+    -   A **Cancel** button allows you to stop the operation at any time.
+    -   Generates a downloadable `.txt` summary file detailing exactly which videos were removed (or would be removed in a dry run) and why.
 
 ## Installation
 
@@ -40,17 +41,20 @@ The extension icon will now appear in your browser's toolbar.
     -   **Title/Channel:** Enter keywords or quoted phrases.
     -   **Age:** Enter a number and select the time unit.
     -   **Watched:** Check the box to target watched videos.
+    -   **Dry Run:** Check this box if you only want to generate a report of videos that *would* be deleted, without actually removing them.
 4.  **Start the Process:** Click the **"Delete Selected"** button.
 5.  **Wait:** The popup will close, and a "Cancel" button will appear on the page. The script will first scroll through the entire playlist to load all videos. This may take some time for very large playlists.
-6.  **Deletion:** Once all videos are loaded, the script will begin deleting the ones that match your criteria.
-7.  **Review the Summary:** When the process is complete, a confirmation alert will appear, and your browser will automatically download a `.txt` file summarizing exactly which videos were removed and the reasons why.
+6.  **Deletion / Report Generation:**
+    -   If **Dry Run** was *not* selected, the script will begin deleting the videos that match your criteria.
+    -   If **Dry Run** *was* selected, no videos will be deleted, but a report will still be generated.
+7.  **Review the Summary:** When the process is complete, a confirmation alert will appear, and your browser will automatically download a `.txt` file summarizing exactly which videos were removed (or would have been removed in a dry run) and the reasons why.
 
 ## Development
 
 This project is written in TypeScript and uses a simple set of npm scripts for building.
 
 -   **`src/`**: Contains all the source TypeScript, HTML, CSS, and the `manifest.json` file.
--   **`dist/`**: The output directory for the built extension. This folder is what you load into the browser.  Created during build, not included in the repository.
+-   **`dist/`**: The output directory for the built extension. This folder is what you load into the browser. Created during build, not included in the repository.
 -   **`docs/`**: Contains project documentation, including the implementation plan and this README.
 
 ### Build Process

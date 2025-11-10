@@ -159,8 +159,9 @@ const removeCancelButton = () => {
  * Triggers a browser download for the summary text file.
  * @param summaryText The full text content of the summary.
  * @param videoCount The exact number of videos deleted, for the final alert.
+ * @param isDryRun Whether the operation was a dry run.
  */
-const downloadSummary = (summaryText: string, videoCount: number) => {
+const downloadSummary = (summaryText: string, videoCount: number, isDryRun: boolean) => {
   if (videoCount === 0) {
     alert(summaryText); // Show messages like "No videos found" or "Cancelled"
     return;
@@ -176,7 +177,8 @@ const downloadSummary = (summaryText: string, videoCount: number) => {
   document.body.removeChild(link);
   URL.revokeObjectURL(url);
   
-  alert(`Deletion complete. A summary file for the ${videoCount} removed videos has been downloaded.`);
+  const operationType = isDryRun ? 'Dry run completed.' : 'Deletion complete.';
+  alert(`${operationType} A summary file for the ${videoCount} matched videos has been downloaded.`);
 };
 
 // --- Core Logic ---
@@ -278,10 +280,12 @@ const getVideosToDeleteAndReasons = (videos: VideoData[], filters: Filters, logi
  * @param candidates The list of videos to delete.
  * @param filters The original filters used, for the summary header.
  * @param logic The matching logic used, for the summary header.
+ * @param isDryRun If true, no actual deletions will occur.
  * @returns A `DeletionResult` object containing the summary text and the count of deleted videos.
  */
-const deleteVideosAndCreateSummary = async (candidates: DeletionCandidate[], filters: Filters, logic: 'AND' | 'OR'): Promise<DeletionResult> => {
-  alert(`Found ${candidates.length} videos that match your criteria. The deletion process will now begin. Please do not interact with the page.`);
+const deleteVideosAndCreateSummary = async (candidates: DeletionCandidate[], filters: Filters, logic: 'AND' | 'OR', isDryRun: boolean): Promise<DeletionResult> => {
+  const operationVerb = isDryRun ? 'identify' : 'delete';
+  alert(`Found ${candidates.length} videos that match your criteria. The ${operationVerb} process will now begin. Please do not interact with the page.`);
   const deletedVideoSummaries: string[] = [];
 
   for (const candidate of candidates) {
@@ -289,6 +293,13 @@ const deleteVideosAndCreateSummary = async (candidates: DeletionCandidate[], fil
     const videoElement = candidate.element;
     videoElement.scrollIntoView({ behavior: 'smooth', block: 'center' });
     await sleep(200); // Wait for scroll
+
+    if (isDryRun) {
+      console.log(`Dry Run: Would have removed: ${candidate.title}`);
+      deletedVideoSummaries.push(`- ${candidate.title}\n  (Reason: ${candidate.reasons.join(', ')})`);
+      continue; // Skip actual deletion
+    }
+
     const menuButton = videoElement.querySelector<HTMLElement>(SELECTORS.menuButton);
     if (!menuButton) continue;
     await clickElement(menuButton);
@@ -318,7 +329,7 @@ const deleteVideosAndCreateSummary = async (candidates: DeletionCandidate[], fil
   let summaryText: string;
 
   if (deletedCount === 0) {
-    summaryText = isCancelled ? "Operation was cancelled before any videos were deleted." : "No videos were ultimately deleted. This may happen if the 'Remove from' button could not be found for the matched videos.";
+    summaryText = isCancelled ? "Operation was cancelled before any videos were processed." : "No videos were ultimately processed. This may happen if the 'Remove from' button could not be found for the matched videos (in a real run).";
   } else {
     let criteriaHeader = `Search Criteria (Match ${logic}):\n`;
     if (filters.isWatched) criteriaHeader += `- Is Watched\n`;
@@ -327,7 +338,9 @@ const deleteVideosAndCreateSummary = async (candidates: DeletionCandidate[], fil
     if (filters.age) criteriaHeader += `- Older Than: ${filters.age.value} ${filters.age.unit}\n`;
     criteriaHeader += '---\n\n';
 
-    const summaryHeader = `Deletion Summary (${deletedCount} videos removed):\n\n`;
+    const summaryHeader = isDryRun ? 
+      `Dry Run Summary (${deletedCount} videos would be removed):\n\n` :
+      `Deletion Summary (${deletedCount} videos removed):\n\n`;
     summaryText = criteriaHeader + summaryHeader + deletedVideoSummaries.join('\n');
   }
   
@@ -383,12 +396,14 @@ const loadAllVideos = async (): Promise<number> => {
  * The main entry point for the deletion process, triggered by a message from the popup.
  * @param filters The filter criteria from the popup.
  * @param logic The matching logic ('AND' or 'OR').
+ * @param isDryRun If true, no actual deletions will occur.
  */
-const handleDeleteRequest = async (filters: Filters, logic: 'AND' | 'OR') => {
+const handleDeleteRequest = async (filters: Filters, logic: 'AND' | 'OR', isDryRun: boolean) => {
   isCancelled = false;
   createCancelButton();
   try {
-    alert('Starting... The extension will now scroll down to load all videos in your playlist. Please wait.');
+    const operationType = isDryRun ? 'dry run' : 'deletion';
+    alert(`Starting ${operationType}... The extension will now scroll down to load all videos in your playlist. Please wait.`);
     await loadAllVideos();
     if (isCancelled) {
       alert('Operation cancelled during video loading.');
@@ -399,8 +414,8 @@ const handleDeleteRequest = async (filters: Filters, logic: 'AND' | 'OR') => {
     console.log(`Extraction complete. Found data for ${allVideos.length} videos.`);
     const videosToDelete = getVideosToDeleteAndReasons(allVideos, filters, logic);
     if (videosToDelete.length > 0) {
-      const result = await deleteVideosAndCreateSummary(videosToDelete, filters, logic);
-      downloadSummary(result.summaryText, result.deletedCount);
+      const result = await deleteVideosAndCreateSummary(videosToDelete, filters, logic, isDryRun);
+      downloadSummary(result.summaryText, result.deletedCount, isDryRun);
     } else {
       alert('No videos found matching your criteria.');
     }
@@ -415,9 +430,9 @@ const handleDeleteRequest = async (filters: Filters, logic: 'AND' | 'OR') => {
 };
 
 // Listen for the message from the popup script.
-chrome.runtime.onMessage.addListener((request: { action: string, filters: Filters, logic: 'AND' | 'OR' }, sender, sendResponse) => {
+chrome.runtime.onMessage.addListener((request: { action: string, filters: Filters, logic: 'AND' | 'OR', isDryRun: boolean }, sender, sendResponse) => {
   if (request.action === 'deleteVideos') {
-    handleDeleteRequest(request.filters, request.logic || 'OR');
+    handleDeleteRequest(request.filters, request.logic || 'OR', request.isDryRun || false);
     sendResponse({ status: 'started' });
     return true; // Indicates an asynchronous response.
   }
