@@ -15,7 +15,7 @@ const SELECTORS = {
   channelName: 'ytd-channel-name a',
   watchedOverlay: 'ytd-thumbnail-overlay-playback-status-renderer',
   resumeOverlay: 'ytd-thumbnail-overlay-resume-playback-renderer',
-  metaBlock: '#metadata-line span.ytd-video-meta-block',
+  metaBlock: '#video-info span', // Corrected selector for age string
   menuButton: 'yt-icon-button.ytd-menu-renderer',
   menuPopup: 'ytd-menu-popup-renderer',
   removeMenuItem: 'ytd-menu-service-item-renderer',
@@ -209,17 +209,23 @@ const extractVideoData = (videoElement: HTMLElement): VideoData | null => {
 };
 
 /**
- * Converts a relative time string (e.g., "3 weeks ago") into a number of days.
+ * Converts a relative time string (e.g., "3 weeks ago", "a year ago") into a number of days.
  * @param ageString The string to parse.
  * @returns The age in days, or `null` if parsing fails.
  */
 const parseAgeToDays = (ageString: string): number | null => {
     if (!ageString) return null;
-    const match = ageString.match(/(\d+)\s+(day|week|month|year)s?/);
+
+    // Match patterns like "a year ago", "an hour ago", "5 years ago"
+    const match = ageString.match(/(a|an|\d+)\s+(day|week|month|year)/);
     if (!match) return null;
-    const value = parseInt(match[1], 10);
-    const unit = match[2];
-    switch (unit) {
+
+    const valueStr = match[1];
+    const unitStr = match[2];
+
+    const value = (valueStr === 'a' || valueStr === 'an') ? 1 : parseInt(valueStr, 10);
+    
+    switch (unitStr) {
         case 'day': return value;
         case 'week': return value * 7;
         case 'month': return value * 30; // Approximation
@@ -239,14 +245,21 @@ const getVideosToDeleteAndReasons = (videos: VideoData[], filters: Filters, logi
   const candidates: DeletionCandidate[] = [];
   const titleSearchTerms = parseFilterString(filters.titleContains);
   const channelSearchTerms = parseFilterString(filters.channelName);
+  
   let filterAgeInDays: number | null = null;
   if (filters.age && filters.age.value) {
-    filterAgeInDays = parseAgeToDays(`${filters.age.value} ${filters.age.unit}`);
+    const { value, unit } = filters.age;
+    switch (unit) {
+        case 'days': filterAgeInDays = value; break;
+        case 'weeks': filterAgeInDays = value * 7; break;
+        case 'months': filterAgeInDays = value * 30; break;
+        case 'years': filterAgeInDays = value * 365; break;
+    }
   }
   
   const activeFilterCount = [
     filters.isWatched, 
-    filters.deleteUnavailable, // Include in active filter count
+    filters.deleteUnavailable,
     titleSearchTerms.length > 0, 
     channelSearchTerms.length > 0, 
     filterAgeInDays !== null
@@ -447,7 +460,6 @@ const handleDeleteRequest = async (filters: Filters, logic: 'AND' | 'OR', isDryR
 // Listen for the message from the popup script.
 chrome.runtime.onMessage.addListener((request: { action: string, filters: Filters, logic: 'AND' | 'OR', isDryRun: boolean }, sender, sendResponse) => {
   if (request.action === 'deleteVideos') {
-    // Pass deleteUnavailable from request.filters to handleDeleteRequest
     handleDeleteRequest(request.filters, request.logic || 'OR', request.isDryRun || false);
     sendResponse({ status: 'started' });
     return true; // Indicates an asynchronous response.

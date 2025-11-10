@@ -28,6 +28,13 @@ console.log('Popup script parsed.');
 document.addEventListener('DOMContentLoaded', () => {
   console.log('Popup DOM loaded.');
 
+  // Display the version number
+  const versionDisplay = getElementById('version-display', HTMLSpanElement);
+  if (versionDisplay) {
+    const manifest = chrome.runtime.getManifest();
+    versionDisplay.textContent = `v${manifest.version}`;
+  }
+
   const deleteButton = getElementById('delete-button', HTMLButtonElement);
 
   if (deleteButton) {

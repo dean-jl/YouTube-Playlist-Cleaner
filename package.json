@@ -1,6 +1,6 @@
 {
   "name": "youtube-playlist-cleaner",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "description": "A browser extension to selectively delete items from your YouTube playlists.",
   "scripts": {
     "clean": "rimraf dist",

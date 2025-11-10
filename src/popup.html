@@ -5,7 +5,9 @@
   <link rel="stylesheet" type="text/css" href="popup.css">
 </head>
 <body>
-  <h1>YouTube Playlist Cleaner</h1>
+  <div class="header-container">
+    <h1>YouTube Playlist Cleaner <span id="version-display"></span></h1>
+  </div>
 
   <div class="filter-group logic-group">
     <label>
@@ -46,8 +48,8 @@
     <div class="filter-group">
       <label>
         <input type="checkbox" id="delete-unavailable">
-          Delete unavailable videos (Private and Deleted videos)<br>
-          Select the show unavailable videos playlist option for this to work.
+          Delete unavailable videos (Private/Deleted videos)<br>
+          Select the show unavailable videos playlist option for your playlist for this to work.
       </label>
     </div>
     <div class="filter-group">

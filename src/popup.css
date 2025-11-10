@@ -4,10 +4,21 @@ body {
   padding: 10px;
 }
 
+.header-container {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  margin-bottom: 15px;
+}
+
 h1 {
   font-size: 18px;
+  margin: 0;
   text-align: center;
-  margin-bottom: 15px;
+}
+
+#version-display {
+  /* No specific styles needed, it will inherit from h1 */
 }
 
 .filters {
