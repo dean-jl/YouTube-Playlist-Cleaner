@@ -1,0 +1,50 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>YouTube Playlist Cleaner</title>
+  <link rel="stylesheet" type="text/css" href="popup.css">
+</head>
+<body>
+  <h1>YouTube Playlist Cleaner</h1>
+
+  <div class="filter-group logic-group">
+    <label>
+      <input type="radio" name="logic" value="OR" checked> Match ANY filter (OR)
+    </label>
+    <label>
+      <input type="radio" name="logic" value="AND"> Match ALL filters (AND)
+    </label>
+  </div>
+
+  <div class="filters">
+    <div class="filter-group">
+      <label for="title-contains">Title contains:</label>
+      <input type="text" id="title-contains" placeholder="e.g., news, "let's play"">
+    </div>
+    <div class="filter-group">
+      <label for="channel-name">Channel name:</label>
+      <input type="text" id="channel-name" placeholder="e.g., Tech Talks">
+    </div>
+    <div class="filter-group age-filter">
+      <label for="video-age-value">Video is older than:</label>
+      <div class="age-inputs">
+        <input type="number" id="video-age-value" min="1" placeholder="e.g., 30">
+        <select id="video-age-unit">
+          <option value="days" selected>Days</option>
+          <option value="weeks">Weeks</option>
+          <option value="months">Months</option>
+          <option value="years">Years</option>
+        </select>
+      </div>
+    </div>
+    <div class="filter-group">
+      <label>
+        <input type="checkbox" id="is-watched">
+        Watched videos
+      </label>
+    </div>
+  </div>
+  <button id="delete-button">Delete Selected</button>
+  <script src="popup.js"></script>
+</body>
+</html>

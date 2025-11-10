@@ -1,0 +1,19 @@
+{
+  "name": "youtube-playlist-cleaner",
+  "version": "1.0.0",
+  "description": "A browser extension to selectively delete items from your YouTube playlists.",
+  "scripts": {
+    "clean": "rimraf dist",
+    "build:ts": "tsc",
+    "copy:assets": "cpy 'src/**/*.{html,css,json}' dist",
+    "build": "npm run clean && npm run build:ts && npm run copy:assets"
+  },
+  "devDependencies": {
+    "@types/chrome": "^0.0.268",
+    "cpy-cli": "^5.0.0",
+    "rimraf": "^5.0.7",
+    "typescript": "^5.5.3"
+  },
+  "private": true,
+  "license": "MIT"
+}
