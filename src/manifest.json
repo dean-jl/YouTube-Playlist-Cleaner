@@ -1,12 +1,15 @@
 {
   "manifest_version": 3,
-  "name": "YouTube Playlist Trimmer",
-  "version": "1.0.1",
-  "description": "A browser extension to selectively delete items from your YouTube playlists.",
+  "name": "YouTube Playlist Cleaner",
+  "version": "1.0.2",
+  "description": "Selectively remove items from your YouTube playlists.",
+  "icons": {
+    "16": "icon16.png",
+    "48": "icon48.png",
+    "128": "icon128.png"
+  },
   "permissions": [
-    "storage",
-    "activeTab",
-    "scripting"
+    "activeTab"
   ],
   "action": {
     "default_popup": "popup.html"

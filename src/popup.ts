@@ -1,13 +1,13 @@
 /**
  * @file This script manages the extension's popup UI.
- * It is responsible for reading user input from the popup, constructing the filter object,
- * and sending the command to the content script.
+ * It is responsible for checking the current page URL and displaying the appropriate view,
+ * reading user input, and sending commands to the content script.
  */
 
 /**
  * A type-safe helper function to get an element by its ID and verify its type.
  * @param id The ID of the element to find.
- * @param typeConstructor The expected constructor of the element (e.g., HTMLInputElement).
+ * @param typeConstructor The expected constructor of the element (e.g., HTMLDivElement).
  * @returns The typed element, or null if it's not found or the type is incorrect.
  */
 function getElementById<T extends HTMLElement>(id: string, typeConstructor: new () => T): T | null {
@@ -23,23 +23,53 @@ function getElementById<T extends HTMLElement>(id: string, typeConstructor: new 
   return element as T;
 }
 
-console.log('Popup script parsed.');
-
+/**
+ * The main entry point for the popup script.
+ * This function is executed when the DOM is fully loaded.
+ */
 document.addEventListener('DOMContentLoaded', () => {
-  console.log('Popup DOM loaded.');
+  // Query for the active tab to check its URL
+  chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
+    const mainContent = getElementById('main-content', HTMLDivElement);
+    const errorContent = getElementById('error-content', HTMLDivElement);
 
-  // Display the version number
+    // Ensure both content divs are found
+    if (!mainContent || !errorContent) {
+      console.error('Could not find main or error content divs.');
+      return;
+    }
+
+    // Check if the URL is a valid YouTube playlist page
+    const currentUrl = tabs[0]?.url;
+    if (currentUrl && currentUrl.includes('youtube.com/playlist?list=')) {
+      // If valid, show the main content and hide the error message
+      mainContent.style.display = 'block';
+      errorContent.style.display = 'none';
+      initializeMainContent();
+    } else {
+      // If invalid, hide the main content and show the error message
+      mainContent.style.display = 'none';
+      errorContent.style.display = 'block';
+    }
+  });
+
+  // Display the version number regardless of the page validity
   const versionDisplay = getElementById('version-display', HTMLSpanElement);
   if (versionDisplay) {
     const manifest = chrome.runtime.getManifest();
     versionDisplay.textContent = `v${manifest.version}`;
   }
+});
 
+/**
+ * Initializes the event listeners and logic for the main UI.
+ * This function is only called if the page is a valid YouTube playlist.
+ */
+function initializeMainContent() {
   const deleteButton = getElementById('delete-button', HTMLButtonElement);
 
   if (deleteButton) {
     deleteButton.addEventListener('click', () => {
-      console.log('Delete button clicked.');
       try {
         const logicInput = document.querySelector('input[name="logic"]:checked') as HTMLInputElement;
         const logic = logicInput?.value || 'OR';
@@ -49,7 +79,7 @@ document.addEventListener('DOMContentLoaded', () => {
         const titleContainsInput = getElementById('title-contains', HTMLInputElement);
         const channelNameInput = getElementById('channel-name', HTMLInputElement);
         const isWatchedCheckbox = getElementById('is-watched', HTMLInputElement);
-        const deleteUnavailableCheckbox = getElementById('delete-unavailable', HTMLInputElement); // Get delete-unavailable checkbox
+        const deleteUnavailableCheckbox = getElementById('delete-unavailable', HTMLInputElement);
         const dryRunCheckbox = getElementById('dry-run', HTMLInputElement);
 
         const ageValueStr = ageValueInput?.value;
@@ -57,7 +87,7 @@ document.addEventListener('DOMContentLoaded', () => {
         const titleContains = titleContainsInput?.value;
         const channelName = channelNameInput?.value;
         const isWatched = isWatchedCheckbox?.checked;
-        const deleteUnavailable = deleteUnavailableCheckbox?.checked || false; // Get delete-unavailable state
+        const deleteUnavailable = deleteUnavailableCheckbox?.checked || false;
         const isDryRun = dryRunCheckbox?.checked || false;
 
         if (ageValueStr) {
@@ -72,12 +102,11 @@ document.addEventListener('DOMContentLoaded', () => {
           titleContains: titleContains,
           channelName: channelName,
           isWatched: isWatched,
-          deleteUnavailable: deleteUnavailable, // Include delete-unavailable state
+          deleteUnavailable: deleteUnavailable,
           age: (ageValueStr && ageUnit) ? { value: parseInt(ageValueStr, 10), unit: ageUnit } : undefined,
         };
 
-        console.log('Sending filters to content script:', { filters, logic, isDryRun });
-
+        // Send the command to the content script
         chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
           if (tabs && tabs.length > 0 && tabs[0].id) {
             chrome.tabs.sendMessage(tabs[0].id, {
@@ -85,12 +114,11 @@ document.addEventListener('DOMContentLoaded', () => {
               filters: filters,
               logic: logic,
               isDryRun: isDryRun,
-            }, (response) => {
+            }, () => {
               if (chrome.runtime.lastError) {
                 console.error('Error sending message:', chrome.runtime.lastError.message);
                 alert('Could not connect to the YouTube playlist page. Please ensure you are on a valid playlist and try again.');
               } else {
-                console.log('Message sent successfully. Closing popup.');
                 window.close();
               }
             });
@@ -103,4 +131,4 @@ document.addEventListener('DOMContentLoaded', () => {
       }
     });
   }
-});
+}

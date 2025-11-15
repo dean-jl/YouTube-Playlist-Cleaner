@@ -9,57 +9,67 @@
     <h1>YouTube Playlist Cleaner <span id="version-display"></span></h1>
   </div>
 
-  <div class="filter-group logic-group">
-    <label>
-      <input type="radio" name="logic" value="OR" checked> Match ANY filter (OR)
-    </label>
-    <label>
-      <input type="radio" name="logic" value="AND"> Match ALL filters (AND)
-    </label>
-  </div>
+  <!-- Main content, shown on valid pages -->
+  <div id="main-content">
+    <div class="filter-group logic-group">
+      <label>
+        <input type="radio" name="logic" value="OR" checked> Match ANY filter (OR)
+      </label>
+      <label>
+        <input type="radio" name="logic" value="AND"> Match ALL filters (AND)
+      </label>
+    </div>
 
-  <div class="filters">
-    <div class="filter-group">
-      <label for="title-contains">Title contains:</label>
-      <input type="text" id="title-contains" placeholder="e.g., news, "let's play"">
-    </div>
-    <div class="filter-group">
-      <label for="channel-name">Channel name:</label>
-      <input type="text" id="channel-name" placeholder="e.g., Tech Talks">
-    </div>
-    <div class="filter-group age-filter">
-      <label for="video-age-value">Video is older than:</label>
-      <div class="age-inputs">
-        <input type="number" id="video-age-value" min="1" placeholder="e.g., 30">
-        <select id="video-age-unit">
-          <option value="days" selected>Days</option>
-          <option value="weeks">Weeks</option>
-          <option value="months">Months</option>
-          <option value="years">Years</option>
-        </select>
+    <div class="filters">
+      <div class="filter-group">
+        <label for="title-contains">Title contains:</label>
+        <input type="text" id="title-contains" placeholder="e.g., news, "let's play"">
+      </div>
+      <div class="filter-group">
+        <label for="channel-name">Channel name:</label>
+        <input type="text" id="channel-name" placeholder="e.g., Tech Talks">
+      </div>
+      <div class="filter-group age-filter">
+        <label for="video-age-value">Video is older than:</label>
+        <div class="age-inputs">
+          <input type="number" id="video-age-value" min="1" placeholder="e.g., 30">
+          <select id="video-age-unit">
+            <option value="days" selected>Days</option>
+            <option value="weeks">Weeks</option>
+            <option value="months">Months</option>
+            <option value="years">Years</option>
+          </select>
+        </div>
+      </div>
+      <div class="filter-group">
+        <label>
+          <input type="checkbox" id="is-watched">
+          Watched videos
+        </label>
+      </div>
+      <div class="filter-group">
+        <label>
+          <input type="checkbox" id="delete-unavailable">
+            Delete unavailable videos (Private/Deleted videos)<br>
+            Select the show unavailable videos playlist option for your playlist for this to work.
+        </label>
+      </div>
+      <div class="filter-group">
+        <label>
+          <input type="checkbox" id="dry-run">
+          Dry Run (only generate report, do not delete)
+        </label>
       </div>
     </div>
-    <div class="filter-group">
-      <label>
-        <input type="checkbox" id="is-watched">
-        Watched videos
-      </label>
-    </div>
-    <div class="filter-group">
-      <label>
-        <input type="checkbox" id="delete-unavailable">
-          Delete unavailable videos (Private/Deleted videos)<br>
-          Select the show unavailable videos playlist option for your playlist for this to work.
-      </label>
-    </div>
-    <div class="filter-group">
-      <label>
-        <input type="checkbox" id="dry-run">
-        Dry Run (only generate report, do not delete)
-      </label>
-    </div>
+    <button id="delete-button">Delete Selected</button>
   </div>
-  <button id="delete-button">Delete Selected</button>
+
+  <!-- Error message, shown on invalid pages -->
+  <div id="error-content" style="display: none;">
+    <p>This extension can only be used on a YouTube playlist page.</p>
+    <p>Please navigate to a valid playlist and try again.</p>
+  </div>
+
   <script src="popup.js"></script>
 </body>
 </html>

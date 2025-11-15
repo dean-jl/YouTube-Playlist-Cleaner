@@ -1,12 +1,12 @@
 /**
- * @file This is the core content script for the YouTube Playlist Trimmer extension.
+ * @file This is the core content script for the YouTube Playlist Cleaner extension.
  * It is injected into YouTube playlist pages and is responsible for all DOM manipulation,
  * including scrolling, data extraction, and video deletion.
  */
 
 // --- Global State ---
 let isCancelled = false;
-const CANCEL_BUTTON_ID = 'yt-trimmer-cancel-button';
+const CANCEL_BUTTON_ID = 'yt-cleaner-cancel-button';
 
 // --- Constants ---
 const SELECTORS = {
@@ -172,7 +172,7 @@ const downloadSummary = (summaryText: string, videoCount: number, isDryRun: bool
   const link = document.createElement('a');
   link.href = url;
   const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
-  link.download = `youtube-trim-summary-${timestamp}.txt`;
+  link.download = `youtube-cleaner-summary-${timestamp}.txt`;
   document.body.appendChild(link);
   link.click();
   document.body.removeChild(link);
