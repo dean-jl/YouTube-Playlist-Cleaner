@@ -4,6 +4,7 @@ A browser extension for Chrome and Edge that allows you to bulk-delete videos fr
 
 ## Features
 
+-   **Reliable on YouTube's Modern Interface:** Works correctly even when you navigate between pages on YouTube without a full page refresh.
 -   **Smart UI:** The extension automatically detects if you are on a valid YouTube playlist page. If not, it will show a helpful message instead of the filter controls.
 -   **Works on Any Playlist:** Clean up your "Watch Later" list, public playlists, or your own private playlists.
 -   **Flexible Filtering Logic:** Combine filters using either **AND** (all criteria must match) or **OR** (any criterion can match).
@@ -36,7 +37,7 @@ The extension icon will now appear in your browser's toolbar.
 
 ## How to Use
 
-1.  **Navigate to a Playlist:** Go to any YouTube playlist page you want to clean up (e.g., your "Watch Later" list).
+1.  **Navigate to a Playlist:** Go to any YouTube playlist page you want to clean up. The extension is designed to work seamlessly, whether you land on the page directly or navigate to it from another part of YouTube.
 2.  **Open the Extension:** Click the extension's icon in your browser toolbar to open the control panel. If you are on a valid playlist page, the filter controls will appear. If not, you will see a message prompting you to navigate to a valid page.
 3.  **Set Your Filters:**
     -   **Logic:** Choose whether videos must match **ALL** of your filters or **ANY** of them.
