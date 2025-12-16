@@ -458,10 +458,21 @@ const handleDeleteRequest = async (filters: Filters, logic: 'AND' | 'OR', isDryR
 };
 
 // Listen for the message from the popup script.
-chrome.runtime.onMessage.addListener((request: { action: string, filters: Filters, logic: 'AND' | 'OR', isDryRun: boolean }, sender, sendResponse) => {
+chrome.runtime.onMessage.addListener((request: { action: string, filters?: Filters, logic?: 'AND' | 'OR', isDryRun?: boolean }, sender, sendResponse) => {
+  if (request.action === 'ping') {
+    sendResponse({ status: 'ready' });
+    return true;
+  }
+  
   if (request.action === 'deleteVideos') {
-    handleDeleteRequest(request.filters, request.logic || 'OR', request.isDryRun || false);
-    sendResponse({ status: 'started' });
+    // Type guard to ensure required parameters are present
+    if (request.filters && request.logic && typeof request.isDryRun === 'boolean') {
+      handleDeleteRequest(request.filters, request.logic, request.isDryRun);
+      sendResponse({ status: 'started' });
+    } else {
+      console.error('deleteVideos action received without required parameters.');
+      sendResponse({ status: 'error', message: 'Missing parameters for deleteVideos action.' });
+    }
     return true; // Indicates an asynchronous response.
   }
 });
