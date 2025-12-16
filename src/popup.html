@@ -46,6 +46,15 @@
           <input type="checkbox" id="is-watched">
           Watched videos
         </label>
+        <div id="watched-options" class="filter-group" style="display: none; padding-left: 20px;">
+          <label for="watched-criteria">Criteria:</label>
+          <select id="watched-criteria">
+            <option value="any" selected>Played for any duration</option>
+            <option value="percent">Watched for at least (%)</option>
+            <option value="seconds" disabled>Watched for at least (seconds) - Not available</option>
+          </select>
+          <input type="number" id="watched-value" min="1" max="100" style="display: none; width: 50px;" placeholder="%">
+        </div>
       </div>
       <div class="filter-group">
         <label>

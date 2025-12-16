@@ -31,6 +31,7 @@ interface VideoData {
   title: string;
   channelName: string;
   isWatched: boolean;
+  watchPercentage: number;
   ageString?: string;
 }
 
@@ -40,11 +41,18 @@ interface AgeFilter {
   unit: 'days' | 'weeks' | 'months' | 'years';
 }
 
+/** Represents the structure of the watched filter from the popup. */
+interface WatchedFilter {
+  enabled: boolean;
+  criteria: 'any' | 'seconds' | 'percent';
+  value: number;
+}
+
 /** Represents the complete set of filters sent from the popup. */
 interface Filters {
   titleContains?: string;
   channelName?: string;
-  isWatched?: boolean;
+  isWatched?: WatchedFilter;
   deleteUnavailable?: boolean; // New filter for private/deleted videos
   age?: AgeFilter;
 }
@@ -201,11 +209,23 @@ const extractVideoData = (videoElement: HTMLElement): VideoData | null => {
   const channelName = channelElement ? channelElement.innerText.trim() : ''; // Default to empty string
 
   const isFullyWatched = videoElement.querySelector(SELECTORS.watchedOverlay) !== null;
-  const isPartiallyWatched = videoElement.querySelector(SELECTORS.resumeOverlay) !== null;
+  const resumeOverlay = videoElement.querySelector<HTMLElement>(SELECTORS.resumeOverlay);
+  const isPartiallyWatched = resumeOverlay !== null;
   const isWatched = isFullyWatched || isPartiallyWatched;
+
+  let watchPercentage = 0;
+  if (isFullyWatched) {
+    watchPercentage = 100;
+  } else if (isPartiallyWatched && resumeOverlay) {
+    const progressBar = resumeOverlay.querySelector<HTMLElement>('#progress');
+    if (progressBar && progressBar.style.width) {
+      watchPercentage = parseInt(progressBar.style.width, 10) || 0;
+    }
+  }
+
   const metaDataSpans = videoElement.querySelectorAll<HTMLElement>(SELECTORS.metaBlock);
   const ageString = Array.from(metaDataSpans).find(el => el.textContent?.includes('ago'))?.textContent?.trim();
-  return { element: videoElement, title, channelName, isWatched, ageString };
+  return { element: videoElement, title, channelName, isWatched, watchPercentage, ageString };
 };
 
 /**
@@ -258,7 +278,7 @@ const getVideosToDeleteAndReasons = (videos: VideoData[], filters: Filters, logi
   }
   
   const activeFilterCount = [
-    filters.isWatched, 
+    filters.isWatched?.enabled,
     filters.deleteUnavailable,
     titleSearchTerms.length > 0, 
     channelSearchTerms.length > 0, 
@@ -267,9 +287,20 @@ const getVideosToDeleteAndReasons = (videos: VideoData[], filters: Filters, logi
 
   for (const video of videos) {
     const reasons: string[] = [];
-    if (filters.isWatched && video.isWatched) {
-      reasons.push('Is watched');
+
+    if (filters.isWatched && filters.isWatched.enabled) {
+      const { criteria, value } = filters.isWatched;
+      let match = false;
+      if (criteria === 'any' && video.isWatched) {
+        match = true;
+        reasons.push('Is watched (any duration)');
+      } else if (criteria === 'percent' && video.watchPercentage >= value) {
+        match = true;
+        reasons.push(`Watched for at least ${value}%`);
+      }
+      // Future 'seconds' criteria would go here
     }
+
     if (filters.deleteUnavailable && (video.title === '[Private video]' || video.title === '[Deleted video]')) {
       reasons.push('Is unavailable ([Private video] or [Deleted video])');
     }
@@ -359,7 +390,13 @@ const deleteVideosAndCreateSummary = async (candidates: DeletionCandidate[], fil
     summaryText = isCancelled ? "Operation was cancelled before any videos were processed." : "No videos were ultimately processed. This may happen if the 'Remove from' button could not be found for the matched videos (in a real run).";
   } else {
     let criteriaHeader = `Search Criteria (Match ${logic}):\n`;
-    if (filters.isWatched) criteriaHeader += `- Is Watched\n`;
+    if (filters.isWatched && filters.isWatched.enabled) {
+      if (filters.isWatched.criteria === 'any') {
+        criteriaHeader += `- Is Watched (any duration)\n`;
+      } else if (filters.isWatched.criteria === 'percent') {
+        criteriaHeader += `- Watched for at least ${filters.isWatched.value}%\n`;
+      }
+    }
     if (filters.deleteUnavailable) criteriaHeader += `- Delete Unavailable Videos\n`; // Add to summary
     if (filters.titleContains) criteriaHeader += `- Title Contains: ${filters.titleContains}\n`;
     if (filters.channelName) criteriaHeader += `- Channel Contains: ${filters.channelName}\n`;

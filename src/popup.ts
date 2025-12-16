@@ -67,6 +67,31 @@ document.addEventListener('DOMContentLoaded', () => {
  */
 function initializeMainContent() {
   const deleteButton = getElementById('delete-button', HTMLButtonElement);
+  const isWatchedCheckbox = getElementById('is-watched', HTMLInputElement);
+  const watchedOptionsDiv = getElementById('watched-options', HTMLDivElement);
+  const watchedCriteriaSelect = getElementById('watched-criteria', HTMLSelectElement);
+  const watchedValueInput = getElementById('watched-value', HTMLInputElement);
+
+  // --- Event Listeners for Watched Filter ---
+  if (isWatchedCheckbox && watchedOptionsDiv) {
+    isWatchedCheckbox.addEventListener('change', () => {
+      watchedOptionsDiv.style.display = isWatchedCheckbox.checked ? 'block' : 'none';
+    });
+  }
+
+  if (watchedCriteriaSelect && watchedValueInput) {
+    watchedCriteriaSelect.addEventListener('change', () => {
+      const showValueInput = watchedCriteriaSelect.value === 'percent' || watchedCriteriaSelect.value === 'seconds';
+      watchedValueInput.style.display = showValueInput ? 'inline-block' : 'none';
+      if (watchedCriteriaSelect.value === 'percent') {
+        watchedValueInput.placeholder = '%';
+        watchedValueInput.max = '100';
+      } else if (watchedCriteriaSelect.value === 'seconds') {
+        watchedValueInput.placeholder = 'secs';
+        watchedValueInput.removeAttribute('max');
+      }
+    });
+  }
 
   if (deleteButton) {
     deleteButton.addEventListener('click', () => {
@@ -78,7 +103,6 @@ function initializeMainContent() {
         const ageUnitSelect = getElementById('video-age-unit', HTMLSelectElement);
         const titleContainsInput = getElementById('title-contains', HTMLInputElement);
         const channelNameInput = getElementById('channel-name', HTMLInputElement);
-        const isWatchedCheckbox = getElementById('is-watched', HTMLInputElement);
         const deleteUnavailableCheckbox = getElementById('delete-unavailable', HTMLInputElement);
         const dryRunCheckbox = getElementById('dry-run', HTMLInputElement);
 
@@ -86,7 +110,6 @@ function initializeMainContent() {
         const ageUnit = ageUnitSelect?.value;
         const titleContains = titleContainsInput?.value;
         const channelName = channelNameInput?.value;
-        const isWatched = isWatchedCheckbox?.checked;
         const deleteUnavailable = deleteUnavailableCheckbox?.checked || false;
         const isDryRun = dryRunCheckbox?.checked || false;
 
@@ -97,11 +120,29 @@ function initializeMainContent() {
             return; // Stop the process
           }
         }
+        
+        // Build the watched filter object
+        const isWatchedEnabled = isWatchedCheckbox?.checked || false;
+        const watchedCriteria = watchedCriteriaSelect?.value || 'any';
+        const watchedValueStr = watchedValueInput?.value;
+        let watchedValue = 0;
+        if (watchedValueStr) {
+          const parsedValue = parseInt(watchedValueStr, 10);
+          if (isNaN(parsedValue) || parsedValue <= 0) {
+            alert('Watched value must be a positive number.');
+            return;
+          }
+          watchedValue = parsedValue;
+        }
 
         const filters = {
           titleContains: titleContains,
           channelName: channelName,
-          isWatched: isWatched,
+          isWatched: {
+            enabled: isWatchedEnabled,
+            criteria: watchedCriteria,
+            value: watchedValue,
+          },
           deleteUnavailable: deleteUnavailable,
           age: (ageValueStr && ageUnit) ? { value: parseInt(ageValueStr, 10), unit: ageUnit } : undefined,
         };

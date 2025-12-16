@@ -18,7 +18,8 @@ Do not make assumptions on important decisions — get clarification first.
 
 ## Workflow Steps
 
-### [ ] Step: Technical Specification
+### [x] Step: Technical Specification
+<!-- chat-id: 7942706d-5bd4-4808-abad-c9b162b78e3b -->
 
 Assess the task's difficulty, as underestimating it leads to poor outcomes.
 - easy: Straightforward implementation, trivial bug fix or feature
@@ -50,15 +51,26 @@ Save to `{@artifacts_path}/plan.md`. If the feature is trivial and doesn't warra
 
 ---
 
-### [ ] Step: Implementation
+### [x] Step: Implementation
 
-Implement the task according to the technical specification and general engineering best practices.
+#### [x] Sub-step: Update `popup.html`
+- Add the new UI elements for configuring the "watched" criteria as specified in `spec.md`.
 
-1. Break the task into steps where possible.
-2. Implement the required changes in the codebase.
-3. Add and run relevant tests and linters.
-4. Perform basic manual verification if applicable.
-5. After completion, write a report to `{@artifacts_path}/report.md` describing:
-   - What was implemented
-   - How the solution was tested
-   - The biggest issues or challenges encountered
+#### [x] Sub-step: Update `popup.ts`
+- Add event listeners to manage the visibility of the new UI elements.
+- Modify the `filters` object to include the new `WatchedFilter` object.
+
+#### [x] Sub-step: Update `content.ts` interfaces
+- Add the `WatchedFilter` interface.
+- Update the `Filters` interface to use `WatchedFilter`.
+- Add the `watchPercentage` property to the `VideoData` interface.
+
+#### [x] Sub-step: Update `extractVideoData` in `content.ts`
+- Modify the function to extract the watch percentage from the video's progress bar.
+- Set the `watchPercentage` property in the returned `VideoData` object.
+
+#### [x] Sub-step: Update `getVideosToDeleteAndReasons` in `content.ts`
+- Modify the function to use the new `WatchedFilter` object to identify videos for deletion based on the selected criteria.
+
+#### [x] Sub-step: Manual Verification
+- Manually test the new functionality on a YouTube playlist.
