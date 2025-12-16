@@ -24,41 +24,87 @@ function getElementById<T extends HTMLElement>(id: string, typeConstructor: new 
 }
 
 /**
+ * Ensures the content script is injected and ready, then calls the callback.
+ * @param tabId The ID of the tab to check.
+ * @param callback The function to execute once the content script is ready.
+ */
+function ensureContentScriptReady(tabId: number, callback: () => void) {
+  // Ping the content script to see if it's already injected and ready
+  chrome.tabs.sendMessage(tabId, { action: 'ping' }, (response) => {
+    if (chrome.runtime.lastError) {
+      // If the ping fails, the content script is not there. Inject it.
+      console.log('Content script not ready. Injecting now.');
+      chrome.scripting.executeScript({
+        target: { tabId: tabId },
+        files: ['content.js'],
+      }, () => {
+        if (chrome.runtime.lastError) {
+          console.error('Failed to inject content script:', chrome.runtime.lastError.message);
+          alert('Failed to inject the content script. Please try refreshing the page.');
+        } else {
+          console.log('Content script injected successfully.');
+          callback();
+        }
+      });
+    } else if (response && response.status === 'ready') {
+      // If the ping is successful, the script is already there.
+      console.log('Content script is ready.');
+      callback();
+    } else {
+        // In an unexpected state, try to inject anyway
+        console.warn('Ping response was not as expected:', response);
+        chrome.scripting.executeScript({
+            target: { tabId: tabId },
+            files: ['content.js'],
+        }, callback);
+    }
+  });
+}
+
+/**
  * The main entry point for the popup script.
  * This function is executed when the DOM is fully loaded.
  */
 document.addEventListener('DOMContentLoaded', () => {
+  const mainContent = getElementById('main-content', HTMLDivElement);
+  const errorContent = getElementById('error-content', HTMLDivElement);
+  const versionDisplay = getElementById('version-display', HTMLSpanElement);
+
+  // Ensure both content divs are found
+  if (!mainContent || !errorContent) {
+    console.error('Could not find main or error content divs.');
+    return;
+  }
+
+  // Display the version number regardless of the page validity
+  if (versionDisplay) {
+    const manifest = chrome.runtime.getManifest();
+    versionDisplay.textContent = `v${manifest.version}`;
+  }
+
   // Query for the active tab to check its URL
   chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
-    const mainContent = getElementById('main-content', HTMLDivElement);
-    const errorContent = getElementById('error-content', HTMLDivElement);
-
-    // Ensure both content divs are found
-    if (!mainContent || !errorContent) {
-      console.error('Could not find main or error content divs.');
-      return;
+    const currentTab = tabs[0];
+    if (!currentTab?.url || !currentTab.id) {
+        mainContent.style.display = 'none';
+        errorContent.style.display = 'block';
+        return;
     }
 
     // Check if the URL is a valid YouTube playlist page
-    const currentUrl = tabs[0]?.url;
-    if (currentUrl && currentUrl.includes('youtube.com/playlist?list=')) {
-      // If valid, show the main content and hide the error message
-      mainContent.style.display = 'block';
-      errorContent.style.display = 'none';
-      initializeMainContent();
+    if (currentTab.url.includes('youtube.com/playlist?list=')) {
+      // Ensure the content script is ready before showing the UI
+      ensureContentScriptReady(currentTab.id, () => {
+        mainContent.style.display = 'block';
+        errorContent.style.display = 'none';
+        initializeMainContent();
+      });
     } else {
       // If invalid, hide the main content and show the error message
       mainContent.style.display = 'none';
       errorContent.style.display = 'block';
     }
   });
-
-  // Display the version number regardless of the page validity
-  const versionDisplay = getElementById('version-display', HTMLSpanElement);
-  if (versionDisplay) {
-    const manifest = chrome.runtime.getManifest();
-    versionDisplay.textContent = `v${manifest.version}`;
-  }
 });
 
 /**
@@ -94,6 +140,10 @@ function initializeMainContent() {
   }
 
   if (deleteButton) {
+    // Avoid adding multiple listeners if this function is ever called more than once
+    if (deleteButton.dataset.listenerAttached) return;
+    deleteButton.dataset.listenerAttached = 'true';
+
     deleteButton.addEventListener('click', () => {
       try {
         const logicInput = document.querySelector('input[name="logic"]:checked') as HTMLInputElement;
@@ -158,6 +208,7 @@ function initializeMainContent() {
             }, () => {
               if (chrome.runtime.lastError) {
                 console.error('Error sending message:', chrome.runtime.lastError.message);
+                // This alert should no longer be needed with the handshake, but is kept as a fallback.
                 alert('Could not connect to the YouTube playlist page. Please ensure you are on a valid playlist and try again.');
               } else {
                 window.close();
