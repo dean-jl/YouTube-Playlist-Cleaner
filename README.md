@@ -12,6 +12,8 @@ A browser extension for Chrome and Edge that allows you to bulk-delete videos fr
     -   Search for multiple keywords in video titles or channel names (e.g., `news, politics`).
     -   Search for exact phrases using double quotes (e.g., `"let's play"`).
 -   **Filter by Watched Status:** Automatically remove all videos that are marked as fully or partially watched.
+    -   When using the "Watched for at least (%)" criteria, the extension requires a whole number between 1 and 100 (inclusive). Decimal values will be truncated to integers.
+    -   The extension reads partial watch progress from YouTube's resume overlay progress bar when available (e.g., `style="width: 11%;"`). If only a full-watched overlay is present, that video will be treated as 100% watched.
 -   **Filter by Age:** Remove videos older than a specified number of days, weeks, months, or years.
 -   **Delete Unavailable Videos:** Automatically remove videos with titles like "[Private video]" or "[Deleted video]".
 -   **Dry Run Option:** Preview which videos would be deleted without actually removing them. This generates a report showing all matched videos and the reasons for their selection.

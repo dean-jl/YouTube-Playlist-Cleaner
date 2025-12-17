@@ -121,20 +121,51 @@ function initializeMainContent() {
   // --- Event Listeners for Watched Filter ---
   if (isWatchedCheckbox && watchedOptionsDiv) {
     isWatchedCheckbox.addEventListener('change', () => {
-      watchedOptionsDiv.style.display = isWatchedCheckbox.checked ? 'block' : 'none';
+      // Use 'flex' so the CSS flex row layout for #watched-options is honored
+      watchedOptionsDiv.style.display = isWatchedCheckbox.checked ? 'flex' : 'none';
     });
   }
 
   if (watchedCriteriaSelect && watchedValueInput) {
     watchedCriteriaSelect.addEventListener('change', () => {
-      const showValueInput = watchedCriteriaSelect.value === 'percent' || watchedCriteriaSelect.value === 'seconds';
+      // Only the 'percent' option is supported here. Show the numeric input inline
+      // and constrain it to whole numbers between 1 and 100.
+      const showValueInput = watchedCriteriaSelect.value === 'percent';
       watchedValueInput.style.display = showValueInput ? 'inline-block' : 'none';
       if (watchedCriteriaSelect.value === 'percent') {
         watchedValueInput.placeholder = '%';
-        watchedValueInput.max = '100';
-      } else if (watchedCriteriaSelect.value === 'seconds') {
-        watchedValueInput.placeholder = 'secs';
+        watchedValueInput.setAttribute('min', '1');
+        watchedValueInput.setAttribute('max', '100');
+        watchedValueInput.setAttribute('step', '1');
+        // Ensure input mode helps mobile keyboards (harmless on desktop)
+        watchedValueInput.setAttribute('inputmode', 'numeric');
+      } else {
+        // Clear constraints for other (future) criteria
+        watchedValueInput.removeAttribute('min');
         watchedValueInput.removeAttribute('max');
+        watchedValueInput.removeAttribute('step');
+        watchedValueInput.removeAttribute('inputmode');
+      }
+    });
+
+    // Enforce whole numbers and clamp between 1 and 100 while the user types
+    watchedValueInput.addEventListener('input', () => {
+      const raw = watchedValueInput.value;
+      if (!raw) return;
+      // If user types a decimal, truncate to integer
+      if (raw.includes('.')) {
+        const intVal = Math.floor(parseFloat(raw));
+        watchedValueInput.value = isNaN(intVal) ? '' : String(intVal);
+      }
+      // Clamp to min/max if attributes are present
+      const minAttr = watchedValueInput.getAttribute('min');
+      const maxAttr = watchedValueInput.getAttribute('max');
+      const min = minAttr ? parseInt(minAttr, 10) : undefined;
+      const max = maxAttr ? parseInt(maxAttr, 10) : undefined;
+      const current = parseInt(watchedValueInput.value, 10);
+      if (!isNaN(current)) {
+        if (min !== undefined && current < min) watchedValueInput.value = String(min);
+        if (max !== undefined && current > max) watchedValueInput.value = String(max);
       }
     });
   }
@@ -172,17 +203,38 @@ function initializeMainContent() {
         }
         
         // Build the watched filter object
-        const isWatchedEnabled = isWatchedCheckbox?.checked || false;
         const watchedCriteria = watchedCriteriaSelect?.value || 'any';
         const watchedValueStr = watchedValueInput?.value;
         let watchedValue = 0;
+        // Parse and validate watchedValue if provided
         if (watchedValueStr) {
           const parsedValue = parseInt(watchedValueStr, 10);
           if (isNaN(parsedValue) || parsedValue <= 0) {
-            alert('Watched value must be a positive number.');
+            alert('Watched value must be a positive whole number.');
+            return;
+          }
+          // If percent criteria is selected, enforce 1-100 range
+          if (watchedCriteria === 'percent' && (parsedValue < 1 || parsedValue > 100)) {
+            alert('Please enter a percentage between 1 and 100.');
             return;
           }
           watchedValue = parsedValue;
+        }
+
+        // Only enable the watched filter if the checkbox is checked and the chosen criteria is valid.
+        let isWatchedEnabled = isWatchedCheckbox?.checked || false;
+        if (isWatchedEnabled) {
+          if (watchedCriteria === 'percent') {
+            // require a provided watchedValue > 0
+            if (!watchedValue || watchedValue <= 0) {
+              alert('Please enter a percentage between 1 and 100 for the watched criteria.');
+              return;
+            }
+            isWatchedEnabled = true;
+          } else {
+            // 'any' criteria is valid so keep enabled
+            isWatchedEnabled = true;
+          }
         }
 
         const filters = {
@@ -200,24 +252,24 @@ function initializeMainContent() {
         // Send the command to the content script
         chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
           if (tabs && tabs.length > 0 && tabs[0].id) {
-            chrome.tabs.sendMessage(tabs[0].id, {
-              action: 'deleteVideos',
-              filters: filters,
-              logic: logic,
-              isDryRun: isDryRun,
-            }, () => {
-              if (chrome.runtime.lastError) {
-                console.error('Error sending message:', chrome.runtime.lastError.message);
-                // This alert should no longer be needed with the handshake, but is kept as a fallback.
-                alert('Could not connect to the YouTube playlist page. Please ensure you are on a valid playlist and try again.');
-              } else {
-                window.close();
-              }
-            });
-          } else {
-            console.error('Could not find active tab to send message to.');
-          }
-        });
+             chrome.tabs.sendMessage(tabs[0].id, {
+               action: 'deleteVideos',
+               filters: filters,
+               logic: logic,
+               isDryRun: isDryRun,
+             }, () => {
+               if (chrome.runtime.lastError) {
+                 console.error('Error sending message:', chrome.runtime.lastError.message);
+                 // This alert should no longer be needed with the handshake, but is kept as a fallback.
+                 alert('Could not connect to the YouTube playlist page. Please ensure you are on a valid playlist and try again.');
+               } else {
+                 window.close();
+               }
+             });
+           } else {
+             console.error('Could not find active tab to send message to.');
+           }
+         });
       } catch (error) {
         console.error("An error occurred in the popup's click handler:", error);
       }

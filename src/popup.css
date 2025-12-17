@@ -65,17 +65,64 @@ select {
   border-radius: 3px;
 }
 
-button {
-  width: 100%;
-  padding: 10px;
-  margin-top: 15px;
+/* Size the select to fit its longest option plus a small extra so the native arrow doesn't overlap.
+   fit-content/max-content keeps it slightly wider than the longest option; min-width ensures
+   it doesn't get too small for localized text, and max-width keeps it inside the popup. */
+#watched-criteria {
+  display: inline-block;
+  white-space: nowrap; /* keep option text on one line when measuring */
+  width: -moz-fit-content;
+  width: fit-content; /* match content width (longest option) */
+  min-width: 200px;    /* slightly wider fallback to accommodate a few more characters */
+  max-width: calc(100% - 20px); /* never exceed popup width */
+  box-sizing: border-box;
+  padding-right: 22px; /* give a bit of room for the dropdown arrow */
+}
+
+/* Keep the small numeric input small (already inline) */
+#watched-value {
+  width: 50px;
+}
+
+/* Use a two-column grid for the watched options: label + controls.
+   This keeps the 'Criteria:' label on the left and the controls on the right.
+   The controls themselves are laid out inline with the select + percent input. */
+#watched-options {
+  display: grid;
+  grid-template-columns: 80px 1fr; /* label column + controls column */
+  align-items: center;
+  gap: 6px;
+  padding-left: 20px; /* preserve existing indentation */
+}
+
+.watched-controls {
+  display: inline-flex;
+  flex-direction: row;
+  gap: 8px;
+  align-items: center;
+  justify-content: flex-start;
+}
+
+/* Make the select not too wide so the percent input can remain on the same row */
+.watched-controls select {
+  min-width: 150px;
+  width: fit-content;
+}
+
+/* Style the main action button specifically so other buttons are unaffected */
+#delete-button {
+  display: block;
+  width: 150px; /* fixed width so centering is reliable */
+  padding: 10px 12px;
+  margin: 15px auto 0; /* center horizontally */
   background-color: #f44336;
   color: white;
   border: none;
   border-radius: 3px;
   cursor: pointer;
+  text-align: center;
 }
 
-button:hover {
+#delete-button:hover {
   background-color: #d32f2f;
 }
