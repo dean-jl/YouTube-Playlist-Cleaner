@@ -1,7 +1,6 @@
 // Guard against double-injection: if the page already ran this content script, skip re-initializing.
 if ((window as any).__YPC_CONTENT_SCRIPT_INITIALIZED) {
   // already initialized in this page context — no-op
-  console.log('YouTube Playlist Cleaner content script already initialized.');
 } else {
   (window as any).__YPC_CONTENT_SCRIPT_INITIALIZED = true;
 
@@ -13,6 +12,8 @@ if ((window as any).__YPC_CONTENT_SCRIPT_INITIALIZED) {
 
   // --- Global State ---
   let isCancelled = false;
+  // debug flag removed; content script will not emit debug logs by default
+
   const CANCEL_BUTTON_ID = 'yt-cleaner-cancel-button';
 
   // --- Constants ---
@@ -40,6 +41,7 @@ if ((window as any).__YPC_CONTENT_SCRIPT_INITIALIZED) {
     isWatched: boolean;
     watchPercentage: number;
     ageString?: string;
+    videoUrl?: string; // full absolute URL to the video when available
   }
 
   /** Represents the structure of the age filter from the popup. */
@@ -69,6 +71,7 @@ if ((window as any).__YPC_CONTENT_SCRIPT_INITIALIZED) {
     element: HTMLElement;
     title: string;
     reasons: string[];
+    videoUrl?: string;
   }
 
   /** Represents the final result of the deletion process. */
@@ -103,7 +106,6 @@ if ((window as any).__YPC_CONTENT_SCRIPT_INITIALIZED) {
 
       setTimeout(() => {
         clearInterval(interval);
-        console.warn(`waitForElement timed out for selector: ${selector}`);
         resolve(null);
       }, timeout);
     });
@@ -155,7 +157,6 @@ if ((window as any).__YPC_CONTENT_SCRIPT_INITIALIZED) {
       color: 'white', border: 'none', borderRadius: '5px', padding: '15px', fontSize: '16px', cursor: 'pointer'
     });
     button.onclick = () => {
-      console.log('Cancel button clicked by user.');
       isCancelled = true;
       button.textContent = 'Cancelling...';
       button.setAttribute('disabled', 'true');
@@ -197,7 +198,174 @@ if ((window as any).__YPC_CONTENT_SCRIPT_INITIALIZED) {
     alert(`${operationType} A summary file for the ${videoCount} matched videos has been downloaded.`);
   };
 
-  // --- Core Logic ---
+  /**
+   * On-screen status indicator for loading progress.
+   */
+  const STATUS_ID = 'yt-cleaner-status';
+  const showStatus = () => {
+    if (document.getElementById(STATUS_ID)) return;
+    const container = document.createElement('div');
+    container.id = STATUS_ID;
+    Object.assign(container.style, {
+      // position the toast near the bottom-right but above the cancel button
+      position: 'fixed', bottom: '80px', right: '12px', zIndex: '10000', background: 'rgba(0,0,0,0.8)',
+      color: 'white', padding: '8px 12px', borderRadius: '6px', fontSize: '13px', maxWidth: '320px',
+      boxShadow: '0 2px 8px rgba(0,0,0,0.5)', fontFamily: 'Arial, sans-serif'
+    });
+    container.textContent = 'Loading playlist...';
+    document.body.appendChild(container);
+  };
+
+  const updateStatus = (text: string) => {
+    const el = document.getElementById(STATUS_ID);
+    if (el) el.textContent = text;
+  };
+
+  const hideStatus = () => {
+    const el = document.getElementById(STATUS_ID);
+    if (el) el.remove();
+  };
+
+  /**
+   * Scrolls down the playlist page to ensure all videos are loaded into the DOM.
+   * Combined approach: uses MutationObserver to detect node additions, IntersectionObserver
+   * to track visibility of the last node, and scrollHeight comparisons. The routine
+   * first scrolls to the top (so we start from a deterministic state regardless of
+   * where the user scrolled), then actively scrolls to bottom and nudges until the
+   * playlist finishes loading. Restores user's scroll position when finished.
+   * @returns A promise that resolves with the total number of videos found.
+   */
+  const loadAllVideos = async (showStatusFlag = true): Promise<number> => {
+    const WAIT_GROW_MS = 1400; // how long to wait for growth after each scroll
+    const POLL_INTERVAL = 150;
+    const NO_GROW_THRESHOLD = 2; // quicker stop but still allow a retry
+    const MAX_TOTAL_MS = 120_000; // global safety cap
+
+    if (showStatusFlag) showStatus();
+
+    // Remember user's scroll so we can restore it later
+    const originalScroll = window.scrollY || window.pageYOffset || 0;
+
+    // Ensure a consistent starting point: scroll to top to load initial nodes reliably
+    try { window.scrollTo({ top: 0, behavior: 'auto' }); } catch (e) { window.scrollTo(0, 0); }
+    await sleep(250);
+
+    const playlistContainer = document.querySelector('ytd-playlist-video-list-renderer') || document.querySelector(SELECTORS.videoRenderer)?.parentElement || document.body;
+
+    let lastCount = document.querySelectorAll(SELECTORS.videoRenderer).length;
+    let prevScrollHeight = document.documentElement.scrollHeight;
+    let noGrowCount = 0;
+
+    // Set up a mutation observer to quickly detect node additions
+    let mutationObserved = false;
+    const mo = new MutationObserver(() => { mutationObserved = true; });
+    try { mo.observe(playlistContainer as Node, { childList: true, subtree: true }); } catch (e) { /* ignore */ }
+
+    // IntersectionObserver to know when the current last node is visible
+    let lastNodeVisible = false;
+    let io: any = null;
+    const observeLastNode = (node: Element | null) => {
+      if (io) {
+        try { io.disconnect(); } catch (e) { }
+        io = null;
+      }
+      lastNodeVisible = false;
+      if (!node) return;
+      io = new IntersectionObserver((entries) => {
+        for (const entry of entries) {
+          if (entry.isIntersecting) lastNodeVisible = true;
+        }
+      }, { root: null, threshold: 0.01 });
+      try { io.observe(node); } catch (e) { /* ignore */ }
+    };
+
+    const startTime = Date.now();
+
+    while (Date.now() - startTime < MAX_TOTAL_MS) {
+      if (isCancelled) break;
+
+      // Strong nudge: scroll to document bottom which reliably triggers lazy-load
+      try { window.scrollTo({ top: document.documentElement.scrollHeight, behavior: 'auto' }); }
+      catch (e) { window.scrollBy({ top: window.innerHeight, behavior: 'auto' }); }
+
+      // short settle
+      await sleep(220);
+
+      // Update last-node observation
+      const nodes = document.querySelectorAll<HTMLElement>(SELECTORS.videoRenderer);
+      const currentLastNode = nodes.length > 0 ? nodes[nodes.length - 1] : null;
+      observeLastNode(currentLastNode);
+
+      if (showStatusFlag) updateStatus(`Loading playlist... ${lastCount} items loaded`);
+
+      // Wait for short period to detect growth via mutation, new nodes, or scrollHeight increase
+      mutationObserved = false;
+      const grew = await new Promise<boolean>((resolve) => {
+        const t0 = Date.now();
+        const check = () => {
+          const curCount = document.querySelectorAll(SELECTORS.videoRenderer).length;
+          const curHeight = document.documentElement.scrollHeight;
+          if (curCount > lastCount) return resolve(true);
+          if (curHeight > prevScrollHeight) return resolve(true);
+          if (mutationObserved) return resolve(true);
+          if (Date.now() - t0 > WAIT_GROW_MS) return resolve(false);
+          setTimeout(check, POLL_INTERVAL);
+        };
+        check();
+      });
+
+      const currentCount = document.querySelectorAll(SELECTORS.videoRenderer).length;
+      const currentHeight = document.documentElement.scrollHeight;
+
+      if (grew && currentCount > lastCount) {
+        lastCount = currentCount;
+        prevScrollHeight = currentHeight;
+        noGrowCount = 0;
+        // continue loading
+        continue;
+      }
+
+      // No growth this round
+      noGrowCount++;
+
+      // Check for continuation spinner and last node visibility for decisive end detection
+      const continuationSpinner = document.querySelector(SELECTORS.continuationSpinner) as HTMLElement | null;
+      const nodesAfter = document.querySelectorAll<HTMLElement>(SELECTORS.videoRenderer);
+      const lastNodeAfter = nodesAfter.length > 0 ? nodesAfter[nodesAfter.length - 1] : null;
+      // lastNodeVisible is updated by IntersectionObserver
+
+      if (showStatusFlag) updateStatus(`Loading playlist... ${nodesAfter.length} items loaded` + (continuationSpinner ? ' (loading...)' : ''));
+
+      // If no spinner present and the last node is visible, assume end.
+      if (!continuationSpinner && lastNodeVisible) {
+        break;
+      }
+
+      // If we've had a couple of no-growth rounds, assume end to keep it timely
+      if (noGrowCount >= NO_GROW_THRESHOLD) {
+        break;
+      }
+
+      // Otherwise nudge a little further down and repeat
+      try { window.scrollBy({ top: Math.max(window.innerHeight * 0.8, 800), behavior: 'auto' }); } catch (e) { }
+      await sleep(180);
+    }
+
+    // Cleanup observers
+    try { mo.disconnect(); } catch (e) { }
+    if (io && typeof (io as any).disconnect === 'function') try { (io as any).disconnect(); } catch (e) { }
+
+    // Restore user's original scroll position so we don't disrupt their browsing context
+    try { window.scrollTo({ top: originalScroll, behavior: 'auto' }); } catch (e) { window.scrollTo(0, originalScroll); }
+
+    const finalCount = document.querySelectorAll(SELECTORS.videoRenderer).length;
+    if (showStatusFlag) updateStatus(`Loaded ${finalCount} videos.`);
+    await sleep(500);
+    if (showStatusFlag) hideStatus();
+
+    // finished loading
+    return finalCount;
+  };
 
   /**
    * Extracts all relevant data from a single video renderer element.
@@ -234,7 +402,19 @@ if ((window as any).__YPC_CONTENT_SCRIPT_INITIALIZED) {
 
     const metaDataSpans = videoElement.querySelectorAll<HTMLElement>(SELECTORS.metaBlock);
     const ageString = Array.from(metaDataSpans).find(el => el.textContent?.includes('ago'))?.textContent?.trim();
-    return { element: videoElement, title, channelName, isWatched, watchPercentage, ageString };
+    // Try to extract video URL from the title anchor
+    let videoUrl: string | undefined = undefined;
+    try {
+      const titleAnchor = titleElement as HTMLAnchorElement | null;
+      if (titleAnchor && titleAnchor.getAttribute) {
+        const href = titleAnchor.getAttribute('href');
+        if (href) {
+          if (href.startsWith('http')) videoUrl = href;
+          else if (href.startsWith('/')) videoUrl = 'https://www.youtube.com' + href;
+        }
+      }
+    } catch (e) { /* ignore */ }
+    return { element: videoElement, title, channelName, isWatched, watchPercentage, ageString, videoUrl };
   };
 
   /**
@@ -306,7 +486,7 @@ if ((window as any).__YPC_CONTENT_SCRIPT_INITIALIZED) {
           reasons.push('Is watched (any duration)');
         } else if (criteria === 'percent') {
           // Only consider numeric comparisons when value is valid (>0)
-          if (typeof value === 'number' && value > 0 && video.watchPercentage >= value) {
+          if (value > 0 && video.watchPercentage >= value) {
             match = true;
             reasons.push(`Watched for at least ${value}%`);
           }
@@ -340,7 +520,7 @@ if ((window as any).__YPC_CONTENT_SCRIPT_INITIALIZED) {
       const matchesAnd = reasons.length === activeFilterCount && activeFilterCount > 0;
 
       if ((logic === 'OR' && matchesOr) || (logic === 'AND' && matchesAnd)) {
-        candidates.push({ element: video.element, title: video.title, reasons: reasons });
+        candidates.push({ element: video.element, title: video.title, reasons: reasons, videoUrl: (video as VideoData).videoUrl });
       }
     }
     return candidates;
@@ -355,52 +535,103 @@ if ((window as any).__YPC_CONTENT_SCRIPT_INITIALIZED) {
    * @returns A `DeletionResult` object containing the summary text and the count of deleted videos.
    */
   const deleteVideosAndCreateSummary = async (candidates: DeletionCandidate[], filters: Filters, logic: 'AND' | 'OR', isDryRun: boolean): Promise<DeletionResult> => {
-    const operationVerb = isDryRun ? 'identify' : 'delete';
-    alert(`Found ${candidates.length} videos that match your criteria. The ${operationVerb} process will now begin. Please do not interact with the page.`);
-    const deletedVideoSummaries: string[] = [];
+     const operationVerb = isDryRun ? 'identify' : 'delete';
+     alert(`Found ${candidates.length} videos that match your criteria. The ${operationVerb} process will now begin. Please do not interact with the page.`);
 
-    for (const candidate of candidates) {
-      if (isCancelled) break;
+    // Prepare on-screen status for per-video progress (disabled for dry run)
+    const total = candidates.length;
+    const showToasts = !isDryRun;
+    if (showToasts) { showStatus(); updateStatus(`${isDryRun ? 'Identifying' : 'Removing'} 0 of ${total}...`); }
+
+    const deletedVideoSummaries: string[] = [];
+    const failedRemovals: { title: string, reasons: string[], videoUrl?: string }[] = []; // Track failed removals with optional URL
+
+    // Helper to avoid including URLs for inaccessible items
+    const isUnavailableTitle = (t?: string) => {
+      if (!t) return false;
+      const tt = t.trim();
+      return tt === '[Private video]' || tt === '[Deleted video]';
+    };
+
+    for (let idx = 0; idx < candidates.length; idx++) {
+      const candidate = candidates[idx];
+      if (isCancelled) {
+        if (showToasts) updateStatus(`Cancelled at ${idx} of ${total}.`);
+        break;
+      }
+
+      const safeTitle = (candidate.title || '(untitled)').replace(/\s+/g, ' ').trim();
+      const shortTitle = safeTitle.length > 80 ? safeTitle.slice(0, 77) + '...' : safeTitle;
+      const verb = isDryRun ? 'Identifying' : 'Removing';
+      if (showToasts) updateStatus(`${verb} ${idx + 1} of ${total}: ${shortTitle}`);
+
       const videoElement = candidate.element;
 
       // For a dry run we don't need to interact with the page; just record the summary.
       if (isDryRun) {
-        deletedVideoSummaries.push(`- ${candidate.title}\n  (Reason: ${candidate.reasons.join(', ')})`);
+        // Include URL when available in dry-run output, but skip for unavailable titles
+        const hasUrl = (candidate.videoUrl && !isUnavailableTitle(candidate.title));
+        if (hasUrl) {
+          // Put Reason line before the URL
+          deletedVideoSummaries.push(`- ${candidate.title}\n  (Reason: ${candidate.reasons.join(', ')})\n  ${candidate.videoUrl}`);
+        } else {
+          deletedVideoSummaries.push(`- ${candidate.title}\n  (Reason: ${candidate.reasons.join(', ')})`);
+        }
+        // small pause so status is perceivable for very fast loops
+        await sleep(60);
         continue; // Skip actual deletion and avoid scrolling/interacting
       }
 
       // Actual deletion path: scroll to the video and interact with the menu to remove it.
-      videoElement.scrollIntoView({ behavior: 'smooth', block: 'center' });
-      await sleep(200); // Wait for scroll
+      try {
+        videoElement.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        await sleep(200); // Wait for scroll
 
-      const menuButton = videoElement.querySelector<HTMLElement>(SELECTORS.menuButton);
-      if (!menuButton) continue;
-      await clickElement(menuButton);
-
-      const menuPopup = await waitForElement(SELECTORS.menuPopup, 3000);
-      if (menuPopup) {
-        const menuItems = menuPopup.querySelectorAll<HTMLElement>(SELECTORS.removeMenuItem);
-        const removeItemButton = Array.from(menuItems).find(item =>
-          item.textContent?.trim().startsWith('Remove from')
-        );
-
-        if (removeItemButton) {
-          await clickElement(removeItemButton, 300);
-          deletedVideoSummaries.push(`- ${candidate.title}\n  (Reason: ${candidate.reasons.join(', ')})`);
-        } else {
-          console.error("Could not find 'Remove from' button in menu for video:", candidate.title);
-          document.body.click(); // Dismiss menu
-          await sleep(100);
+        const menuButton = videoElement.querySelector<HTMLElement>(SELECTORS.menuButton);
+        if (!menuButton) {
+          // couldn't find the menu button; cannot remove this video — record as a failure and continue
+          console.error("Could not find menu button for video:", candidate.title);
+          failedRemovals.push({ title: candidate.title, reasons: ['Menu button not found'], videoUrl: candidate.videoUrl });
+          continue;
         }
-      } else {
-        console.error("Could not find menu popup for video:", candidate.title);
+        await clickElement(menuButton);
+
+        const menuPopup = await waitForElement(SELECTORS.menuPopup, 3000);
+        if (menuPopup) {
+          const menuItems = menuPopup.querySelectorAll<HTMLElement>(SELECTORS.removeMenuItem);
+          const removeItemButton = Array.from(menuItems).find(item =>
+            item.textContent?.trim().startsWith('Remove from')
+          );
+
+          if (removeItemButton) {
+            await clickElement(removeItemButton, 300);
+            const hasUrl = (candidate.videoUrl && !isUnavailableTitle(candidate.title));
+            if (hasUrl) {
+              // Put Reason line before the URL
+              deletedVideoSummaries.push(`- ${candidate.title}\n  (Reason: ${candidate.reasons.join(', ')})\n  ${candidate.videoUrl}`);
+            } else {
+              deletedVideoSummaries.push(`- ${candidate.title}\n  (Reason: ${candidate.reasons.join(', ')})`);
+            }
+          } else {
+            console.error("Could not find 'Remove from' button in menu for video:", candidate.title);
+            document.body.click(); // Dismiss menu
+            await sleep(100);
+            failedRemovals.push({ title: candidate.title, reasons: ['Remove button not found in menu'], videoUrl: candidate.videoUrl });
+          }
+        } else {
+          console.error("Could not find menu popup for video:", candidate.title);
+          failedRemovals.push({ title: candidate.title, reasons: ['Menu popup not found'], videoUrl: candidate.videoUrl });
+        }
+      } catch (e) {
+        console.error('Error processing candidate:', candidate.title, e);
+        failedRemovals.push({ title: candidate.title, reasons: ['Exception during removal'], videoUrl: candidate.videoUrl });
       }
     }
 
     const deletedCount = deletedVideoSummaries.length;
     let summaryText: string;
 
-    if (deletedCount === 0) {
+    if (deletedCount === 0 && failedRemovals.length === 0) {
       summaryText = isCancelled ? "Operation was cancelled before any videos were processed." : "No videos were ultimately processed. This may happen if the 'Remove from' button could not be found for the matched videos (in a real run).";
     } else {
       let criteriaHeader = `Search Criteria (Match ${logic}):\n`;
@@ -411,98 +642,83 @@ if ((window as any).__YPC_CONTENT_SCRIPT_INITIALIZED) {
           criteriaHeader += `- Watched for at least ${filters.isWatched.value}%\n`;
         }
       }
-      if (filters.deleteUnavailable) criteriaHeader += `- Delete Unavailable Videos\n`; // Add to summary
+      if (filters.deleteUnavailable) criteriaHeader += `- Delete Unavailable Videos\n`;
       if (filters.titleContains) criteriaHeader += `- Title Contains: ${filters.titleContains}\n`;
       if (filters.channelName) criteriaHeader += `- Channel Contains: ${filters.channelName}\n`;
       if (filters.age) criteriaHeader += `- Older Than: ${filters.age.value} ${filters.age.unit}\n`;
       criteriaHeader += '---\n\n';
 
+      const failedCount = failedRemovals.length;
       const summaryHeader = isDryRun ?
-        `Dry Run Summary (${deletedCount} videos would be removed):\n\n` :
-        `Deletion Summary (${deletedCount} videos removed):\n\n`;
+        `Dry Run Summary:\n- Matched: ${total}\n- Would remove: ${deletedCount}\n- Failed to remove: ${failedCount}\n\n` :
+        `Deletion Summary:\n- Matched: ${total}\n- Removed: ${deletedCount}\n- Failed to remove: ${failedCount}\n\n`;
       summaryText = criteriaHeader + summaryHeader + deletedVideoSummaries.join('\n');
+
+      // Add failed removals to the summary if any
+      if (failedRemovals.length > 0) {
+        summaryText += '\n---\n\nFailed to Remove Videos:\n';
+        for (const failure of failedRemovals) {
+          const hasUrl = (failure.videoUrl && !isUnavailableTitle(failure.title));
+          if (hasUrl) {
+            // Put the reason before the URL
+            summaryText += `- ${failure.title}\n  (Reason: ${failure.reasons.join(', ')})\n  ${failure.videoUrl}\n`;
+          } else {
+            summaryText += `- ${failure.title}\n  (Reason: ${failure.reasons.join(', ')})\n`;
+          }
+        }
+      }
+    }
+
+    // Final status update then hide (only for non-dry-run)
+    if (showToasts) {
+      updateStatus(`${isDryRun ? 'Dry run complete' : 'Deletion complete'}. ${deletedCount} processed.`);
+      await sleep(700);
+      hideStatus();
     }
 
     return { summaryText, deletedCount };
   };
 
+
   /**
-   * Scrolls down the playlist page to ensure all videos are loaded into the DOM.
-   * @returns A promise that resolves with the total number of videos found.
+   * Attempts to parse the playlist's total video count from the page header/sidebar.
+   * Returns the integer count if found, otherwise null.
    */
-  const loadAllVideos = async (): Promise<number> => {
-    const MAX_SCROLLS = 100;
-    let lastVideoCount = 0;
-    let stableScrolls = 0;
+  const getPlaylistTotalCount = (): number | null => {
+    // Common YouTube structures that contain the playlist stats
+    const selectors = [
+      'ytd-playlist-sidebar-primary-info-renderer',
+      'ytd-playlist-header-renderer',
+      '#stats',
+      '#metadata #stats',
+      'ytd-video-secondary-info-renderer'
+    ];
 
-    for (let i = 0; i < MAX_SCROLLS; i++) {
-      if (isCancelled) {
-        console.log('Loading cancelled by user.');
-        break;
+    const regex = /([\d,]+)\s+videos?/i;
+
+    for (const sel of selectors) {
+      const node = document.querySelector(sel);
+      if (!node) continue;
+      const text = node.textContent || '';
+      const m = text.match(regex);
+      if (m) {
+        return parseInt(m[1].replace(/,/g, ''), 10);
       }
+    }
 
-      const continuationSpinner = document.querySelector(SELECTORS.continuationSpinner);
-      if (!continuationSpinner) {
-        console.log("No continuation spinner found. Assuming end of list.");
-        break;
+    // Fallback: try scanning common text-bearing elements for a 'X videos' phrase
+    const candidates = Array.from(document.querySelectorAll('span, div')) as HTMLElement[];
+    for (const el of candidates) {
+      const t = (el.textContent || '').trim();
+      if (!t) continue;
+      const m = t.match(regex);
+      if (m) {
+        const val = parseInt(m[1].replace(/,/g, ''), 10);
+        if (!isNaN(val) && val > 0) return val;
       }
+    }
 
-      console.log(`[Scroll ${i + 1}/${MAX_SCROLLS}] Scrolling to load more videos...`);
-      continuationSpinner.scrollIntoView({ behavior: 'smooth', block: 'end' });
-      // Wait for either new video nodes to be appended or a short timeout.
-      // Use a MutationObserver on the playlist container (fallback to document.body) so
-      // we react as soon as new nodes appear instead of relying on a fixed sleep.
-      const prevCount = document.querySelectorAll(SELECTORS.videoRenderer).length;
-      const playlistContainer = document.querySelector(SELECTORS.videoRenderer)?.parentElement || document.body;
-
-      const waitForAppend = (timeoutMs = 3000) => new Promise<void>((resolve) => {
-        let resolved = false;
-        const observer = new MutationObserver((mutations) => {
-          const newCount = document.querySelectorAll(SELECTORS.videoRenderer).length;
-          if (newCount > prevCount) {
-            if (!resolved) {
-              resolved = true;
-              observer.disconnect();
-              resolve();
-            }
-          }
-        });
-        try {
-          observer.observe(playlistContainer, { childList: true, subtree: true });
-        } catch (e) {
-          // If observe fails for some reason, fallback to a fixed sleep
-          console.warn('MutationObserver failed on playlist container, falling back to timeout.', e);
-        }
-        // Always resolve after timeout as a fallback
-        setTimeout(() => {
-          if (!resolved) {
-            resolved = true;
-            try { observer.disconnect(); } catch (e) {}
-            resolve();
-          }
-        }, timeoutMs);
-      });
-
-      await waitForAppend(2500);
-
-      const currentVideoCount = document.querySelectorAll(SELECTORS.videoRenderer).length;
-       if (currentVideoCount === lastVideoCount) {
-         stableScrolls++;
-         console.log(`Video count is stable at ${currentVideoCount}. Stable scrolls: ${stableScrolls}`);
-       } else {
-         lastVideoCount = currentVideoCount;
-         stableScrolls = 0; // Reset if new videos are loaded
-       }
-
-       if (stableScrolls >= 3) {
-         console.log("Video count has been stable for 3 consecutive checks. Assuming end of list.");
-         break;
-       }
-     }
-
-    const finalCount = document.querySelectorAll(SELECTORS.videoRenderer).length;
-    console.log(`Finished loading. Total videos found: ${finalCount}`);
-    return finalCount;
+    return null;
   };
 
   /**
@@ -517,14 +733,15 @@ if ((window as any).__YPC_CONTENT_SCRIPT_INITIALIZED) {
     try {
       const operationType = isDryRun ? 'dry run' : 'deletion';
       alert(`Starting ${operationType}... The extension will now scroll down to load all videos in your playlist. Please wait.`);
-      await loadAllVideos();
+      // Disable on-screen status/toasts during dry run
+      await loadAllVideos(!isDryRun);
       if (isCancelled) {
         alert('Operation cancelled during video loading.');
         return;
       }
       const videoElements = Array.from(document.querySelectorAll<HTMLElement>(SELECTORS.videoRenderer));
       const allVideos = videoElements.map(extractVideoData).filter((v): v is VideoData => v !== null);
-      console.log(`Extraction complete. Found data for ${allVideos.length} videos.`);
+      // extraction complete
       const videosToDelete = getVideosToDeleteAndReasons(allVideos, filters, logic);
       if (videosToDelete.length > 0) {
         const result = await deleteVideosAndCreateSummary(videosToDelete, filters, logic, isDryRun);
@@ -538,12 +755,11 @@ if ((window as any).__YPC_CONTENT_SCRIPT_INITIALIZED) {
     } finally {
       removeCancelButton();
       isCancelled = false;
-      console.log('Operation finished or cancelled. Cleaned up.');
     }
   };
 
   // Listen for the message from the popup script.
-  chrome.runtime.onMessage.addListener((request: { action: string, filters?: Filters, logic?: 'AND' | 'OR', isDryRun?: boolean }, sender, sendResponse) => {
+  chrome.runtime.onMessage.addListener((request: any, sender, sendResponse) => {
     if (request.action === 'ping') {
       sendResponse({ status: 'ready' });
       return false; // responded synchronously
@@ -561,5 +777,5 @@ if ((window as any).__YPC_CONTENT_SCRIPT_INITIALIZED) {
       return false; // responded synchronously
     }
   });
-
 }
+

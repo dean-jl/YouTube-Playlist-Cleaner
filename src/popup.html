@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html>
+<html lang="en">
 <head>
   <title>YouTube Playlist Cleaner</title>
   <link rel="stylesheet" type="text/css" href="popup.css">
@@ -7,6 +7,7 @@
 <body>
   <div class="header-container">
     <h1>YouTube Playlist Cleaner <span id="version-display"></span></h1>
+    <button id="help-button" class="help-button" aria-label="Help" title="Help">?</button>
   </div>
 
   <!-- Main content, shown on valid pages -->
@@ -23,7 +24,7 @@
     <div class="filters">
       <div class="filter-group">
         <label for="title-contains">Title contains:</label>
-        <input type="text" id="title-contains" placeholder="e.g., news, "let's play"">
+        <input type="text" id="title-contains" placeholder="e.g., news, &quot;let's play&quot;">
       </div>
       <div class="filter-group">
         <label for="channel-name">Channel name:</label>
@@ -33,7 +34,8 @@
         <label for="video-age-value">Video is older than:</label>
         <div class="age-inputs">
           <input type="number" id="video-age-value" min="1" placeholder="e.g., 30">
-          <select id="video-age-unit">
+          <label for="video-age-unit" class="visually-hidden">Age unit</label>
+          <select id="video-age-unit" aria-label="Age unit">
             <option value="days" selected>Days</option>
             <option value="weeks">Weeks</option>
             <option value="months">Months</option>
@@ -49,11 +51,12 @@
         <div id="watched-options" class="filter-group" style="display: none; padding-left: 20px;">
           <label for="watched-criteria">Criteria:</label>
           <div class="watched-controls">
-            <select id="watched-criteria">
+            <select id="watched-criteria" aria-label="Watched criteria">
               <option value="any" selected>Played for any duration</option>
               <option value="percent">Watched for at least (%)</option>
             </select>
-            <input type="number" id="watched-value" min="1" max="100" style="display: none; width: 50px;" placeholder="%">
+            <label for="watched-value" class="visually-hidden">Watched percent</label>
+            <input type="number" id="watched-value" aria-label="Watched percent" min="1" max="100" style="display: none; width: 50px;" placeholder="%">
           </div>
         </div>
       </div>
@@ -80,6 +83,38 @@
     <p>Please navigate to a valid playlist and try again.</p>
   </div>
 
-  <script src="popup.js"></script>
-</body>
-</html>
+  <!-- Help modal (initially blank content) -->
+  <div id="help-modal" class="modal" role="dialog" aria-modal="true" aria-hidden="true">
+    <div class="modal-backdrop" id="help-backdrop"></div>
+    <div id="help-content" class="modal-content" role="document" tabindex="-1">
+      <div class="modal-header">
+        <h2>Help</h2>
+      </div>
+      <div class="modal-body" id="help-body">
+        <h3>Quick tips</h3>
+        <ul>
+          <li>If YouTube Playlist Cleaner does not detect that you're on a Playlist or Watch Later page, try reloading the playlist page and reopening the popup.</li>
+          <li>Do not interact with the browser tab or navigate away while the cleaning process is running. This helps the extension reliably scroll and detect videos.</li>
+          <li>Use the <strong>Dry Run</strong> option to preview which videos would be removed before performing an actual deletion.</li>
+          <li>To include unavailable videos (Private/Deleted) in the results, enable your playlist's "Show unavailable videos" setting on YouTube first.</li>
+          <li>If you need to stop the operation, click <strong>Cancel Operation</strong> in-page and allow it to finish cleaning up; do not immediately close the tab.</li>
+        </ul>
+
+        <h3>Troubleshooting</h3>
+        <p>If the extension cannot connect or appears to stall, try these steps in order:</p>
+        <ol>
+          <li>Reload the playlist page and reopen the extension popup.</li>
+          <li>Try a Dry Run first to confirm matches without making changes.</li>
+          <li>If problems persist, open an issue on the extension store listing with as much detail as possible.</li>
+        </ol>
+
+        <div class="modal-footer">
+          <button id="help-close-bottom" class="modal-close-button">Close</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script src="./popup.js"></script>
+ </body>
+ </html>

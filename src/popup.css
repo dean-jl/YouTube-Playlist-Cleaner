@@ -27,6 +27,9 @@ h1 {
   gap: 10px;
 }
 
+.filters .filter-group label { font-size: 13px; }
+.filters .filter-group input[type="checkbox"] { transform: scale(1.05); margin-right: 6px; }
+
 .filter-group {
   display: flex;
   flex-direction: column;
@@ -125,4 +128,125 @@ select {
 
 #delete-button:hover {
   background-color: #d32f2f;
+}
+
+.help-button {
+  position: absolute;
+  top: 6px;
+  right: 6px;
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  border: none;
+  background: #1976d2;
+  color: white;
+  font-weight: bold;
+  font-size: 16px;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.help-button:hover {
+  background: #155fa0;
+}
+
+/* Make the inline SVG icon center its contents */
+.help-icon { display: block; margin: 0; }
+.help-icon circle { display: block; }
+.help-icon rect, .help-icon circle:nth-of-type(2) { transform-origin: center; }
+
+.modal-header { margin-bottom: 6px; justify-content: center; }
+.modal-header h2 { margin: 0; text-align: center; }
+.modal-body { padding-top: 2px; }
+
+/* Modal styles */
+.modal {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  display: none; /* toggled via JS */
+  align-items: center;
+  justify-content: center;
+  z-index: 20000;
+}
+
+.modal[aria-hidden="false"] {
+  display: flex;
+}
+
+.modal-backdrop {
+  position: absolute;
+  inset: 0;
+  background: rgba(0,0,0,0.45);
+}
+
+.modal-content {
+  position: relative;
+  background: white;
+  color: black;
+  padding: 18px 20px; /* increased horizontal padding for balanced margins */
+  border-radius: 6px;
+  width: 90%;
+  max-width: 520px;
+  max-height: 70vh;
+  overflow: auto;
+  box-shadow: 0 6px 18px rgba(0,0,0,0.3);
+}
+
+.modal-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 8px;
+}
+
+.modal-close {
+  border: none;
+  background: transparent;
+  font-size: 18px;
+  cursor: pointer;
+}
+
+.modal-body {
+  font-size: 13px;
+  line-height: 1.6;
+}
+
+/* Slightly more breathing room between list items */
+.modal-body ul li, .modal-body ol li {
+  margin-bottom: 10px;
+}
+
+.visually-hidden {
+  position: absolute !important;
+  height: 1px; width: 1px;
+  overflow: hidden;
+  clip: rect(1px, 1px, 1px, 1px);
+  white-space: nowrap; /* prevent line breaks */
+}
+
+/* Modal footer / close button */
+.modal-footer {
+  margin-top: 18px;
+  text-align: center; /* center the close button */
+}
+.modal-close-button {
+  padding: 8px 14px;
+  background: #1976d2;
+  border: none;
+  color: white;
+  border-radius: 6px;
+  cursor: pointer;
+  min-width: 90px;
+}
+.modal-close-button:hover { background: #155fa0; }
+
+/* Focus styles for accessibility */
+.help-button:focus, .modal-close-button:focus, .modal-close:focus, #delete-button:focus {
+  outline: 3px solid rgba(25, 118, 210, 0.6);
+  outline-offset: 2px;
 }

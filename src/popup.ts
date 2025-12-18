@@ -33,7 +33,6 @@ function ensureContentScriptReady(tabId: number, callback: () => void) {
   chrome.tabs.sendMessage(tabId, { action: 'ping' }, (response) => {
     if (chrome.runtime.lastError) {
       // If the ping fails, the content script is not there. Inject it.
-      console.log('Content script not ready. Injecting now.');
       chrome.scripting.executeScript({
         target: { tabId: tabId },
         files: ['content.js'],
@@ -42,17 +41,14 @@ function ensureContentScriptReady(tabId: number, callback: () => void) {
           console.error('Failed to inject content script:', chrome.runtime.lastError.message);
           alert('Failed to inject the content script. Please try refreshing the page.');
         } else {
-          console.log('Content script injected successfully.');
           callback();
         }
       });
     } else if (response && response.status === 'ready') {
       // If the ping is successful, the script is already there.
-      console.log('Content script is ready.');
       callback();
     } else {
         // In an unexpected state, try to inject anyway
-        console.warn('Ping response was not as expected:', response);
         chrome.scripting.executeScript({
             target: { tabId: tabId },
             files: ['content.js'],
@@ -113,10 +109,83 @@ document.addEventListener('DOMContentLoaded', () => {
  */
 function initializeMainContent() {
   const deleteButton = getElementById('delete-button', HTMLButtonElement);
+  const helpButton = getElementById('help-button', HTMLButtonElement);
+  const helpModal = getElementById('help-modal', HTMLDivElement);
+  const helpBackdrop = getElementById('help-backdrop', HTMLDivElement);
+  // top close removed; we will focus the bottom close button when opening the help modal
   const isWatchedCheckbox = getElementById('is-watched', HTMLInputElement);
   const watchedOptionsDiv = getElementById('watched-options', HTMLDivElement);
   const watchedCriteriaSelect = getElementById('watched-criteria', HTMLSelectElement);
   const watchedValueInput = getElementById('watched-value', HTMLInputElement);
+
+  // Help modal wiring
+  const openHelp = () => {
+    if (!helpModal) return;
+    helpModal.setAttribute('aria-hidden', 'false');
+    // focus the bottom close button for accessibility
+    // focus the modal content so the user starts at the top
+    const content = document.getElementById('help-content') as HTMLDivElement | null;
+    if (content) content.focus();
+    // activate focus trap
+    activateFocusTrap(content);
+  };
+  const closeHelp = () => {
+    if (!helpModal) return;
+    helpModal.setAttribute('aria-hidden', 'true');
+    // return focus to help button
+    if (helpButton) helpButton.focus();
+    // deactivate focus trap
+    deactivateFocusTrap();
+  };
+
+  if (helpButton) {
+    helpButton.addEventListener('click', openHelp);
+  }
+  if (helpBackdrop) {
+    helpBackdrop.addEventListener('click', closeHelp);
+  }
+  const helpCloseBottom = document.getElementById('help-close-bottom') as HTMLButtonElement | null;
+  if (helpCloseBottom) helpCloseBottom.addEventListener('click', closeHelp);
+
+  // Focus trap implementation
+  let _focusTrapHandler: ((e: KeyboardEvent) => void) | null = null;
+  const getFocusableElements = (root: Element | null): HTMLElement[] => {
+    if (!root) return [];
+    return Array.from(root.querySelectorAll<HTMLElement>("a[href], button, textarea, input, select, [tabindex]:not([tabindex='-1'])")).filter(el => !el.hasAttribute('disabled') && el.getAttribute('aria-hidden') !== 'true');
+  };
+  const activateFocusTrap = (root: Element | null) => {
+    if (!root) return;
+    const handler = (e: KeyboardEvent) => {
+      if (e.key !== 'Tab') return;
+      const focusable = getFocusableElements(root);
+      if (focusable.length === 0) {
+        e.preventDefault();
+        return;
+      }
+      const first = focusable[0];
+      const last = focusable[focusable.length - 1];
+      const active = document.activeElement as HTMLElement;
+      if (e.shiftKey) {
+        if (active === first || active === root) {
+          e.preventDefault();
+          last.focus();
+        }
+      } else {
+        if (active === last) {
+          e.preventDefault();
+          first.focus();
+        }
+      }
+    };
+    _focusTrapHandler = handler;
+    document.addEventListener('keydown', handler);
+  };
+  const deactivateFocusTrap = () => {
+    if (_focusTrapHandler) {
+      document.removeEventListener('keydown', _focusTrapHandler);
+      _focusTrapHandler = null;
+    }
+  };
 
   // --- Event Listeners for Watched Filter ---
   if (isWatchedCheckbox && watchedOptionsDiv) {
@@ -238,41 +307,36 @@ function initializeMainContent() {
         }
 
         const filters = {
-          titleContains: titleContains,
-          channelName: channelName,
-          isWatched: {
-            enabled: isWatchedEnabled,
-            criteria: watchedCriteria,
-            value: watchedValue,
-          },
-          deleteUnavailable: deleteUnavailable,
-          age: (ageValueStr && ageUnit) ? { value: parseInt(ageValueStr, 10), unit: ageUnit } : undefined,
-        };
+           titleContains: titleContains,
+           channelName: channelName,
+           isWatched: {
+             enabled: isWatchedEnabled,
+             criteria: watchedCriteria,
+             value: watchedValue,
+           },
+           deleteUnavailable: deleteUnavailable,
+           age: (ageValueStr && ageUnit) ? { value: parseInt(ageValueStr, 10), unit: ageUnit } : undefined,
+         };
 
-        // Send the command to the content script
-        chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
-          if (tabs && tabs.length > 0 && tabs[0].id) {
-             chrome.tabs.sendMessage(tabs[0].id, {
-               action: 'deleteVideos',
-               filters: filters,
-               logic: logic,
-               isDryRun: isDryRun,
-             }, () => {
-               if (chrome.runtime.lastError) {
-                 console.error('Error sending message:', chrome.runtime.lastError.message);
-                 // This alert should no longer be needed with the handshake, but is kept as a fallback.
-                 alert('Could not connect to the YouTube playlist page. Please ensure you are on a valid playlist and try again.');
-               } else {
-                 window.close();
-               }
-             });
+         // Send the command to the content script
+         chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
+           if (tabs && tabs.length > 0 && tabs[0].id) {
+             chrome.tabs.sendMessage(tabs[0].id, { action: 'deleteVideos', filters: filters, logic: logic, isDryRun: isDryRun }, () => {
+                if (chrome.runtime.lastError) {
+                  console.error('Error sending message:', chrome.runtime.lastError.message);
+                  // This alert should no longer be needed with the handshake, but is kept as a fallback.
+                  alert('Could not connect to the YouTube playlist page. Please ensure you are on a valid playlist and try again.');
+                } else {
+                  window.close();
+                }
+              });
            } else {
              console.error('Could not find active tab to send message to.');
            }
          });
-      } catch (error) {
-        console.error("An error occurred in the popup's click handler:", error);
-      }
-    });
-  }
+       } catch (error) {
+         console.error("An error occurred in the popup's click handler:", error);
+       }
+     });
+   }
 }
