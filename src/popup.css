@@ -310,6 +310,14 @@ select {
   margin-bottom: 10px;
 }
 
+.modal-body code {
+  background: #f0f0f0;
+  padding: 1px 4px;
+  border-radius: 3px;
+  font-size: 11px;
+  font-family: monospace;
+}
+
 .visually-hidden {
   position: absolute !important;
   height: 1px; width: 1px;
