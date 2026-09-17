@@ -26,7 +26,9 @@
   - Extended unit tests in `tests/content_utils.test.mjs` (12 tests total) covering duration parsing and duplicate detection.
 - Restored user-facing confirmation `alert()` dialogs in `src/content.ts` (showing how many videos were matched and requiring OK to begin processing, as well as start and zero-match alerts).
 - Expanded extension popup pane dimensions in `src/popup.css` (width increased to 340px, min-height 520px) and streamlined vertical layout (side-by-side logic radio buttons, side-by-side action buttons, compact filter gaps), ensuring all controls fit comfortably in the browser window without triggering a vertical scrollbar.
+- Updated the in-popup Help & Guide modal (`#help-modal`) in `src/popup.html` and `src/popup.css` with clear explanations for all filter options (duplicates, duration/Shorts, watched %, unavailable, age, title/channel, match logic) as well as the new export tools and preferences memory.
+- Updated `README.md` to document duplicate removal, duration/Shorts filtering, CSV export, and settings persistence.
 - Tested, rebuilt, and packaged release bundles with `npm test && npm run build && npm run package`.
 
 ### Current State:
-- Branch `feature/performance-and-enhancements` contains all enhancements, optimizations, restored confirmation dialogs, and expanded popup pane layout. All 12 unit tests pass and store packages pass audits. Ready for testing and merge.
+- Branch `feature/performance-and-enhancements` contains all enhancements, optimizations, restored confirmation dialogs, expanded popup pane layout, and complete Help/README documentation. All 12 unit tests pass and store packages pass audits. Ready for testing and merge.
