@@ -1,6 +1,6 @@
 # YouTube Playlist Cleaner
 
-A browser extension for Chrome and Edge that allows you to bulk-delete videos from any of your YouTube playlists based on a powerful set of customizable filters.
+A Manifest V3 browser extension for Google Chrome, Microsoft Edge, and Firefox that allows you to bulk-delete videos from any of your YouTube playlists based on a powerful set of customizable filters.
 
 ## Features
 
@@ -16,7 +16,7 @@ A browser extension for Chrome and Edge that allows you to bulk-delete videos fr
   - Target YouTube Shorts (≤ 60 seconds).
   - Target videos shorter or longer than a custom minute and second threshold.
 - **Export Playlist (CSV):** Backup all videos from the current playlist into a downloadable, clean UTF-8 CSV spreadsheet (including Title, Video ID, URL, Channel, Duration, Watched %, and Age) without deleting anything.
-- **Preferences Memory:** Automatically saves your filter configurations and restores them the next time you open the extension popup.
+- **Preferences Memory:** Automatically saves your filter configurations to local extension storage (`chrome.storage.local`) and restores them whenever you reopen the extension popup.
 - **Filter by Watched Status:** Automatically remove all videos that are marked as fully or partially watched.
   - When using the "Watched for at least (%)" criteria, the extension requires a whole number between 1 and 100 (inclusive). Decimal values will be truncated to integers.
   - The extension reads partial watch progress from YouTube's resume overlay progress bar when available (e.g., `style="width: 11%;"`). If only a full-watched overlay is present, that video will be treated as 100% watched.
@@ -66,18 +66,21 @@ The extension icon will now appear in your browser's toolbar.
 
 ## Development
 
-This project is written in TypeScript and uses a simple set of npm scripts for building.
+This project is written in TypeScript and uses a set of npm scripts for building, testing, and multi-browser store packaging.
 
-- **`src/`**: Contains all the source TypeScript, HTML, CSS, and the `manifest.json` file.
-- **`dist/`**: The output directory for the built extension. This folder is what you load into the browser. Created during build, not included in the repository.
-- **`docs/`**: Contains project documentation, including the implementation plan and this README.
+- **`src/`**: Extension source files (TypeScript, HTML, CSS, manifest).
+- **`tests/`**: Automated unit test suite (filter parsing, age calculation, duration conversion, and duplicate detection).
+- **`scripts/`**: Cross-browser packaging and validation tooling (`scripts/package.js`).
+- **`dist/`**: Output directory for compiled assets. Loaded unpacked into browsers (generated during build, git-ignored).
+- **`package/`**: Store media assets and release archives (distribution `.zip` archives are git-ignored).
 
-### Build Process
+### Build, Test & Packaging Scripts
 
-- `npm run build`: Cleans the `dist` directory, compiles the TypeScript files, and copies all necessary assets (`.html`, `.css`, `.json`) into `dist`.
+- `npm run build`: Cleans `dist`, compiles TypeScript, and copies assets into `dist`.
+- `npm test`: Runs the automated unit test suite with the Node.js test runner.
+- `npm run package`: Builds and packages store-compliant `.zip` distribution bundles for Chrome, Edge, Firefox, and Safari into `package/`.
+- `npm run verify:package`: Audits packaged release archives to verify manifest schemas, required assets, and file cleanliness.
 - `npm run clean`: Deletes the `dist` directory.
-- `npm run build:ts`: Compiles TypeScript files from `src` to JavaScript in `dist`.
-- `npm run copy:assets`: Copies non-TypeScript assets from `src` to `dist`.
 
 To work on the extension, you can make changes to the files in `src/` and then run `npm run build` to see your changes.
 
