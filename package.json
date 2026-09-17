@@ -5,7 +5,7 @@
   "scripts": {
     "clean": "rimraf dist",
     "build:ts": "tsc",
-    "copy:assets": "cpy 'src/**/*' '!src/**/*.ts' dist",
+    "copy:assets": "cpy 'src/**/*' '!src/**/*.ts' '!src/**/*.js' dist",
     "build": "npm run clean && npm run build:ts && npm run copy:assets",
     "test": "node --test 'tests/**/*.test.mjs'",
     "package": "node scripts/package.js all",
