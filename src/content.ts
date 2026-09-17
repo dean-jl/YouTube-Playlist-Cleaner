@@ -763,7 +763,10 @@ if ((window as any).__YPC_CONTENT_SCRIPT_INITIALIZED) {
    */
   const deleteVideosAndCreateSummary = async (candidates: DeletionCandidate[], filters: Filters, logic: 'AND' | 'OR', isDryRun: boolean): Promise<DeletionResult> => {
     const operationVerb = isDryRun ? 'identify' : 'delete';
-    alert(`Found ${candidates.length} videos that match your criteria. The ${operationVerb} process will now begin. Please do not interact with the page.`);
+    const confirmed = confirm(`Found ${candidates.length} video${candidates.length === 1 ? '' : 's'} that match your criteria.\n\nClick OK to proceed with ${operationVerb}, or Cancel to abort.`);
+    if (!confirmed) {
+      return { summaryText: 'Operation cancelled.', deletedCount: 0 };
+    }
 
     // Prepare on-screen status for per-video progress (disabled for dry run)
     const total = candidates.length;
