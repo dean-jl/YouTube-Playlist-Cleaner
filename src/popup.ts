@@ -128,7 +128,7 @@ interface SavedPreferences {
 }
 
 /**
- * Saves the user's current filter selections to localStorage.
+ * Saves the user's current filter selections to chrome.storage.local and localStorage.
  */
 function savePreferences(): void {
   try {
@@ -150,86 +150,141 @@ function savePreferences(): void {
       durationSeconds: (getElementById('duration-seconds', HTMLInputElement))?.value || '',
       dryRun: (getElementById('dry-run', HTMLInputElement))?.checked || false
     };
-    localStorage.setItem(SETTINGS_KEY, JSON.stringify(prefs));
+
+    // Primary: chrome.storage.local (persists across popup closes and restarts)
+    if (typeof chrome !== 'undefined' && chrome.storage && chrome.storage.local) {
+      chrome.storage.local.set({ [SETTINGS_KEY]: prefs }, () => {
+        if (chrome.runtime.lastError) {
+          console.warn('Could not save to chrome.storage.local:', chrome.runtime.lastError.message);
+        }
+      });
+    }
+
+    // Secondary fallback: localStorage
+    try {
+      localStorage.setItem(SETTINGS_KEY, JSON.stringify(prefs));
+    } catch {
+      // Ignore localStorage errors
+    }
   } catch (err) {
     console.error('Failed to save filter preferences:', err);
   }
 }
 
 /**
- * Restores user's filter selections from localStorage if previously saved.
+ * Applies saved preferences to the popup UI elements.
+ */
+function applyPreferences(prefs: SavedPreferences): void {
+  if (!prefs) return;
+
+  if (prefs.logic) {
+    const radio = document.querySelector(`input[name="logic"][value="${prefs.logic}"]`) as HTMLInputElement;
+    if (radio) radio.checked = true;
+  }
+  const titleInput = getElementById('title-contains', HTMLInputElement);
+  if (titleInput && prefs.titleContains !== undefined) titleInput.value = prefs.titleContains;
+
+  const channelInput = getElementById('channel-name', HTMLInputElement);
+  if (channelInput && prefs.channelName !== undefined) channelInput.value = prefs.channelName;
+
+  const ageValue = getElementById('video-age-value', HTMLInputElement);
+  if (ageValue && prefs.ageValue !== undefined) ageValue.value = prefs.ageValue;
+
+  const ageUnit = getElementById('video-age-unit', HTMLSelectElement);
+  if (ageUnit && prefs.ageUnit !== undefined) ageUnit.value = prefs.ageUnit;
+
+  const isWatched = getElementById('is-watched', HTMLInputElement);
+  const watchedOpts = getElementById('watched-options', HTMLDivElement);
+  if (isWatched && prefs.isWatched !== undefined) {
+    isWatched.checked = prefs.isWatched;
+    if (watchedOpts) watchedOpts.style.display = prefs.isWatched ? 'grid' : 'none';
+  }
+
+  const watchedCrit = getElementById('watched-criteria', HTMLSelectElement);
+  const watchedVal = getElementById('watched-value', HTMLInputElement);
+  if (watchedCrit && prefs.watchedCriteria !== undefined) {
+    watchedCrit.value = prefs.watchedCriteria;
+    if (watchedVal) {
+      const isPercent = prefs.watchedCriteria === 'percent';
+      watchedVal.style.display = isPercent ? 'inline-block' : 'none';
+      if (isPercent) {
+        watchedVal.placeholder = '%';
+        watchedVal.setAttribute('min', '1');
+        watchedVal.setAttribute('max', '100');
+        watchedVal.setAttribute('step', '1');
+        watchedVal.setAttribute('inputmode', 'numeric');
+      }
+    }
+  }
+  if (watchedVal && prefs.watchedValue !== undefined) {
+    watchedVal.value = prefs.watchedValue;
+  }
+
+  const delUnavail = getElementById('delete-unavailable', HTMLInputElement);
+  if (delUnavail && prefs.deleteUnavailable !== undefined) delUnavail.checked = prefs.deleteUnavailable;
+
+  const delDupes = getElementById('delete-duplicates', HTMLInputElement);
+  if (delDupes && prefs.deleteDuplicates !== undefined) delDupes.checked = prefs.deleteDuplicates;
+
+  const durEnabled = getElementById('duration-filter-enabled', HTMLInputElement);
+  const durOpts = getElementById('duration-options', HTMLDivElement);
+  if (durEnabled && prefs.durationEnabled !== undefined) {
+    durEnabled.checked = prefs.durationEnabled;
+    if (durOpts) durOpts.style.display = prefs.durationEnabled ? 'grid' : 'none';
+  }
+
+  const durCrit = getElementById('duration-criteria', HTMLSelectElement);
+  const durTimeInputs = document.getElementById('duration-time-inputs') as HTMLElement | null;
+  if (durCrit && prefs.durationCriteria !== undefined) {
+    durCrit.value = prefs.durationCriteria;
+    if (durTimeInputs) {
+      durTimeInputs.style.display = (prefs.durationCriteria === 'shorter' || prefs.durationCriteria === 'longer') ? 'inline-flex' : 'none';
+    }
+  }
+
+  const durMin = getElementById('duration-minutes', HTMLInputElement);
+  if (durMin && prefs.durationMinutes !== undefined) durMin.value = prefs.durationMinutes;
+
+  const durSec = getElementById('duration-seconds', HTMLInputElement);
+  if (durSec && prefs.durationSeconds !== undefined) durSec.value = prefs.durationSeconds;
+
+  const dryRun = getElementById('dry-run', HTMLInputElement);
+  if (dryRun && prefs.dryRun !== undefined) dryRun.checked = prefs.dryRun;
+}
+
+/**
+ * Restores user's filter selections from chrome.storage.local or localStorage.
  */
 function loadPreferences(): void {
+  try {
+    if (typeof chrome !== 'undefined' && chrome.storage && chrome.storage.local) {
+      chrome.storage.local.get([SETTINGS_KEY], (result) => {
+        if (result && result[SETTINGS_KEY]) {
+          applyPreferences(result[SETTINGS_KEY]);
+        } else {
+          loadFromLocalStorage();
+        }
+      });
+    } else {
+      loadFromLocalStorage();
+    }
+  } catch (err) {
+    console.error('Failed to load filter preferences:', err);
+    loadFromLocalStorage();
+  }
+}
+
+/**
+ * Fallback to load preferences from localStorage.
+ */
+function loadFromLocalStorage(): void {
   try {
     const data = localStorage.getItem(SETTINGS_KEY);
     if (!data) return;
     const prefs: SavedPreferences = JSON.parse(data);
-
-    if (prefs.logic) {
-      const radio = document.querySelector(`input[name="logic"][value="${prefs.logic}"]`) as HTMLInputElement;
-      if (radio) radio.checked = true;
-    }
-    const titleInput = getElementById('title-contains', HTMLInputElement);
-    if (titleInput && prefs.titleContains !== undefined) titleInput.value = prefs.titleContains;
-
-    const channelInput = getElementById('channel-name', HTMLInputElement);
-    if (channelInput && prefs.channelName !== undefined) channelInput.value = prefs.channelName;
-
-    const ageValue = getElementById('video-age-value', HTMLInputElement);
-    if (ageValue && prefs.ageValue !== undefined) ageValue.value = prefs.ageValue;
-
-    const ageUnit = getElementById('video-age-unit', HTMLSelectElement);
-    if (ageUnit && prefs.ageUnit !== undefined) ageUnit.value = prefs.ageUnit;
-
-    const isWatched = getElementById('is-watched', HTMLInputElement);
-    const watchedOpts = getElementById('watched-options', HTMLDivElement);
-    if (isWatched && prefs.isWatched !== undefined) {
-      isWatched.checked = prefs.isWatched;
-      if (watchedOpts) watchedOpts.style.display = prefs.isWatched ? 'flex' : 'none';
-    }
-
-    const watchedCrit = getElementById('watched-criteria', HTMLSelectElement);
-    const watchedVal = getElementById('watched-value', HTMLInputElement);
-    if (watchedCrit && prefs.watchedCriteria !== undefined) {
-      watchedCrit.value = prefs.watchedCriteria;
-      if (watchedVal) {
-        watchedVal.style.display = prefs.watchedCriteria === 'percent' ? 'inline-block' : 'none';
-      }
-    }
-    if (watchedVal && prefs.watchedValue !== undefined) watchedVal.value = prefs.watchedValue;
-
-    const delUnavail = getElementById('delete-unavailable', HTMLInputElement);
-    if (delUnavail && prefs.deleteUnavailable !== undefined) delUnavail.checked = prefs.deleteUnavailable;
-
-    const delDupes = getElementById('delete-duplicates', HTMLInputElement);
-    if (delDupes && prefs.deleteDuplicates !== undefined) delDupes.checked = prefs.deleteDuplicates;
-
-    const durEnabled = getElementById('duration-filter-enabled', HTMLInputElement);
-    const durOpts = getElementById('duration-options', HTMLDivElement);
-    if (durEnabled && prefs.durationEnabled !== undefined) {
-      durEnabled.checked = prefs.durationEnabled;
-      if (durOpts) durOpts.style.display = prefs.durationEnabled ? 'grid' : 'none';
-    }
-
-    const durCrit = getElementById('duration-criteria', HTMLSelectElement);
-    const durTimeInputs = document.getElementById('duration-time-inputs') as HTMLElement | null;
-    if (durCrit && prefs.durationCriteria !== undefined) {
-      durCrit.value = prefs.durationCriteria;
-      if (durTimeInputs) {
-        durTimeInputs.style.display = (prefs.durationCriteria === 'shorter' || prefs.durationCriteria === 'longer') ? 'inline-flex' : 'none';
-      }
-    }
-
-    const durMin = getElementById('duration-minutes', HTMLInputElement);
-    if (durMin && prefs.durationMinutes !== undefined) durMin.value = prefs.durationMinutes;
-
-    const durSec = getElementById('duration-seconds', HTMLInputElement);
-    if (durSec && prefs.durationSeconds !== undefined) durSec.value = prefs.durationSeconds;
-
-    const dryRun = getElementById('dry-run', HTMLInputElement);
-    if (dryRun && prefs.dryRun !== undefined) dryRun.checked = prefs.dryRun;
+    applyPreferences(prefs);
   } catch (err) {
-    console.error('Failed to load filter preferences:', err);
+    console.error('Failed to load filter preferences from localStorage:', err);
   }
 }
 
@@ -323,7 +378,7 @@ function initializeMainContent() {
   // --- Event Listeners for Watched Filter ---
   if (isWatchedCheckbox && watchedOptionsDiv) {
     isWatchedCheckbox.addEventListener('change', () => {
-      watchedOptionsDiv.style.display = isWatchedCheckbox.checked ? 'flex' : 'none';
+      watchedOptionsDiv.style.display = isWatchedCheckbox.checked ? 'grid' : 'none';
       savePreferences();
     });
   }
@@ -349,7 +404,10 @@ function initializeMainContent() {
 
     watchedValueInput.addEventListener('input', () => {
       const raw = watchedValueInput.value;
-      if (!raw) return;
+      if (!raw) {
+        savePreferences();
+        return;
+      }
       if (raw.includes('.')) {
         const intVal = Math.floor(parseFloat(raw));
         watchedValueInput.value = isNaN(intVal) ? '' : String(intVal);
@@ -365,6 +423,8 @@ function initializeMainContent() {
       }
       savePreferences();
     });
+    watchedValueInput.addEventListener('change', savePreferences);
+    watchedValueInput.addEventListener('blur', savePreferences);
   }
 
   // --- Event Listeners for Duration Filter ---
@@ -383,12 +443,18 @@ function initializeMainContent() {
     });
   }
 
+  // Auto-save on logic radio buttons
+  document.querySelectorAll<HTMLInputElement>('input[name="logic"]').forEach((r) => {
+    r.addEventListener('change', savePreferences);
+  });
+
   // Auto-save on inputs
   const autoSaveInputs = ['title-contains', 'channel-name', 'video-age-value', 'video-age-unit', 'delete-unavailable', 'delete-duplicates', 'duration-minutes', 'duration-seconds', 'dry-run'];
   for (const id of autoSaveInputs) {
     const el = document.getElementById(id);
     if (el) {
       el.addEventListener('change', savePreferences);
+      el.addEventListener('input', savePreferences);
     }
   }
 
