@@ -58,3 +58,6 @@ package/*.afphoto
 CODE_REVIEW.md
 CODE_REVIEW_RESPONSE.md
 IMPLEMENTATION.md
+TASK.md
+tasks.md
+session_context.md
