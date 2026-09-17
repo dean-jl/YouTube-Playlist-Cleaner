@@ -24,7 +24,9 @@
   - Styled popup duration controls and CSV export button.
 - Implemented Phase 4 Verification & Testing:
   - Extended unit tests in `tests/content_utils.test.mjs` (12 tests total) covering duration parsing and duplicate detection.
-  - Rebuilt and validated multi-browser release packages with `npm run package` (Chrome, Edge, Firefox all passing 100%).
+- Restored user-facing confirmation `alert()` dialogs in `src/content.ts` (showing how many videos were matched and requiring OK to begin processing, as well as start and zero-match alerts).
+- Expanded extension popup pane dimensions in `src/popup.css` (width increased to 340px, min-height 520px) and streamlined vertical layout (side-by-side logic radio buttons, side-by-side action buttons, compact filter gaps), ensuring all controls fit comfortably in the browser window without triggering a vertical scrollbar.
+- Tested, rebuilt, and packaged release bundles with `npm test && npm run build && npm run package`.
 
 ### Current State:
-- Branch `feature/performance-and-enhancements` contains all enhancements and optimizations, fully passing tests (`npm test`) and store audit (`npm run package`). Ready for user review and merge into main.
+- Branch `feature/performance-and-enhancements` contains all enhancements, optimizations, restored confirmation dialogs, and expanded popup pane layout. All 12 unit tests pass and store packages pass audits. Ready for testing and merge.
