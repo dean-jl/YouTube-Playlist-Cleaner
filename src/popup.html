@@ -1,6 +1,7 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
+  <meta charset="UTF-8">
   <title>YouTube Playlist Cleaner</title>
   <link rel="stylesheet" type="text/css" href="popup.css">
 </head>
@@ -63,9 +64,36 @@
       <div class="filter-group">
         <label>
           <input type="checkbox" id="delete-unavailable">
-            Delete unavailable videos (Private/Deleted videos)<br>
-            Select the show unavailable videos playlist option for your playlist for this to work.
+          Delete unavailable videos (Private/Deleted)
+          <span class="sub-label">Requires "Show unavailable videos" enabled in playlist</span>
         </label>
+      </div>
+      <div class="filter-group">
+        <label>
+          <input type="checkbox" id="delete-duplicates">
+          Delete duplicate videos (keeps first instance)
+        </label>
+      </div>
+      <div class="filter-group">
+        <label>
+          <input type="checkbox" id="duration-filter-enabled">
+          Filter by duration
+        </label>
+        <div id="duration-options" class="filter-group" style="display: none; padding-left: 20px;">
+          <label for="duration-criteria">Criteria:</label>
+          <div class="duration-controls">
+            <select id="duration-criteria" aria-label="Duration criteria">
+              <option value="shorts" selected>Shorts (&le; 60s)</option>
+              <option value="shorter">Shorter than</option>
+              <option value="longer">Longer than</option>
+            </select>
+            <div id="duration-time-inputs" style="display: none; gap: 4px; align-items: center;">
+              <input type="number" id="duration-minutes" aria-label="Duration minutes" min="0" max="999" placeholder="min" style="width: 45px;">
+              <span>:</span>
+              <input type="number" id="duration-seconds" aria-label="Duration seconds" min="0" max="59" placeholder="sec" style="width: 45px;">
+            </div>
+          </div>
+        </div>
       </div>
       <div class="filter-group">
         <label>
@@ -74,7 +102,10 @@
         </label>
       </div>
     </div>
-    <button id="delete-button">Delete Selected</button>
+    <div class="action-buttons">
+      <button id="delete-button">Delete Selected</button>
+      <button id="export-button" class="export-button" type="button" title="Export current playlist to CSV">Export Playlist (CSV)</button>
+    </div>
   </div>
 
   <!-- Error message, shown on invalid pages -->
@@ -83,20 +114,36 @@
     <p>Please navigate to a valid playlist and try again.</p>
   </div>
 
-  <!-- Help modal (initially blank content) -->
+  <!-- Help modal -->
   <div id="help-modal" class="modal" role="dialog" aria-modal="true" aria-hidden="true">
     <div class="modal-backdrop" id="help-backdrop"></div>
     <div id="help-content" class="modal-content" role="document" tabindex="-1">
       <div class="modal-header">
-        <h2>Help</h2>
+        <h2>Help &amp; Guide</h2>
       </div>
       <div class="modal-body" id="help-body">
-        <h3>Quick tips</h3>
+        <h3>Filter Options</h3>
         <ul>
-          <li>If YouTube Playlist Cleaner does not detect that you're on a Playlist or Watch Later page, try reloading the playlist page and reopening the popup.</li>
-          <li>Do not interact with the browser tab or navigate away while the cleaning process is running. This helps the extension reliably scroll and detect videos.</li>
-          <li>Use the <strong>Dry Run</strong> option to preview which videos would be removed before performing an actual deletion.</li>
-          <li>To include unavailable videos (Private/Deleted) in the results, enable your playlist's "Show unavailable videos" setting on YouTube first.</li>
+          <li><strong>Duplicate Videos:</strong> Detects videos appearing more than once in the playlist. The earliest/first instance is preserved, while subsequent copies are selected for removal.</li>
+          <li><strong>Duration / Shorts:</strong> Target YouTube Shorts (&le; 60s) or filter videos shorter or longer than a custom minute and second threshold.</li>
+          <li><strong>Watched Videos:</strong> Filter videos you have already watched (either any played progress or at least a specified percentage 1-100%).</li>
+          <li><strong>Unavailable Videos:</strong> Targets private or deleted videos. (Requires selecting "Show unavailable videos" in YouTube's playlist menu first).</li>
+          <li><strong>Age:</strong> Targets videos published older than a specified number of days, weeks, months, or years.</li>
+          <li><strong>Title &amp; Channel:</strong> Comma-separated keywords or exact phrases in double quotes (e.g. <code>"let's play", tutorial</code>).</li>
+          <li><strong>Match Logic:</strong> <em>Match ANY (OR)</em> selects a video if it meets at least one active filter. <em>Match ALL (AND)</em> requires a video to satisfy every active filter simultaneously.</li>
+          <li><strong>Dry Run:</strong> Scans and identifies matching videos, generating a full summary report without deleting anything.</li>
+        </ul>
+
+        <h3>Tools &amp; Features</h3>
+        <ul>
+          <li><strong>Export Playlist (CSV):</strong> Scans the current playlist and downloads a structured UTF-8 CSV spreadsheet with video titles, IDs, URLs, channel names, durations, and watched status. Great for backing up before mass cleaning!</li>
+          <li><strong>Preferences Memory:</strong> Your filter choices and values are automatically saved and restored whenever you reopen the extension popup.</li>
+        </ul>
+
+        <h3>Quick Tips</h3>
+        <ul>
+          <li>Review the match count in the confirmation dialog before confirming deletion.</li>
+          <li>Do not interact with the browser tab or navigate away while the cleaning process is running.</li>
           <li>If you need to stop the operation, click <strong>Cancel Operation</strong> in-page and allow it to finish cleaning up; do not immediately close the tab.</li>
         </ul>
 
@@ -105,7 +152,7 @@
         <ol>
           <li>Reload the playlist page and reopen the extension popup.</li>
           <li>Try a Dry Run first to confirm matches without making changes.</li>
-          <li>If problems persist, open an issue on the extension store listing with as much detail as possible.</li>
+          <li>If problems persist, open an issue on the extension store listing or repository with as much detail as possible.</li>
         </ol>
 
         <div class="modal-footer">

@@ -12,6 +12,7 @@ if ((window as any).__YPC_CONTENT_SCRIPT_INITIALIZED) {
 
   // --- Global State ---
   let isCancelled = false;
+  let hasShownRemoveActionNotFoundAlert = false;
   // debug flag removed; content script will not emit debug logs by default
 
   const CANCEL_BUTTON_ID = 'yt-cleaner-cancel-button';
@@ -42,12 +43,21 @@ if ((window as any).__YPC_CONTENT_SCRIPT_INITIALIZED) {
     watchPercentage: number;
     ageString?: string;
     videoUrl?: string; // full absolute URL to the video when available
+    videoId?: string;
+    durationString?: string;
+    durationSeconds?: number | null;
   }
 
   /** Represents the structure of the age filter from the popup. */
   interface AgeFilter {
     value: number;
     unit: 'days' | 'weeks' | 'months' | 'years';
+  }
+
+  /** Represents the structure of the duration filter from the popup. */
+  interface DurationFilter {
+    criteria: 'shorts' | 'shorter' | 'longer';
+    value?: number; // duration in seconds
   }
 
   /** Represents the structure of the watched filter from the popup. */
@@ -62,7 +72,9 @@ if ((window as any).__YPC_CONTENT_SCRIPT_INITIALIZED) {
     titleContains?: string;
     channelName?: string;
     isWatched?: WatchedFilter;
-    deleteUnavailable?: boolean; // New filter for private/deleted videos
+    deleteUnavailable?: boolean; // filter for private/deleted videos
+    deleteDuplicates?: boolean;  // filter for duplicate playlist entries
+    duration?: DurationFilter;   // filter for duration / Shorts
     age?: AgeFilter;
   }
 
@@ -72,6 +84,7 @@ if ((window as any).__YPC_CONTENT_SCRIPT_INITIALIZED) {
     title: string;
     reasons: string[];
     videoUrl?: string;
+    videoId?: string;
   }
 
   /** Represents the final result of the deletion process. */
@@ -119,6 +132,102 @@ if ((window as any).__YPC_CONTENT_SCRIPT_INITIALIZED) {
   const clickElement = async (element: HTMLElement, delay = 100): Promise<void> => {
     element.click();
     await sleep(delay);
+  };
+
+  const extractVideoIdFromUrl = (videoUrl?: string): string | undefined => {
+    if (!videoUrl) return undefined;
+    try {
+      const url = new URL(videoUrl, 'https://www.youtube.com');
+      const v = url.searchParams.get('v');
+      return v || undefined;
+    } catch (e) {
+      return undefined;
+    }
+  };
+
+  const findRemoveFromPlaylistMenuItem = (menuPopup: HTMLElement): HTMLElement | null => {
+    const menuItems = Array.from(menuPopup.querySelectorAll<HTMLElement>(SELECTORS.removeMenuItem));
+    if (menuItems.length === 0) return null;
+
+    const keyRegex = /(removefromplaylist|remove_from_playlist|removefromplaylistaction)/i;
+
+    const deepHasKey = (root: any): boolean => {
+      const seen = new Set<any>();
+      const queue: Array<{ value: any; depth: number }> = [{ value: root, depth: 0 }];
+      while (queue.length > 0) {
+        const { value, depth } = queue.shift()!;
+        if (!value || depth > 7) continue;
+        if (typeof value !== 'object') continue;
+        if (seen.has(value)) continue;
+        seen.add(value);
+
+        if (Array.isArray(value)) {
+          for (const v of value) queue.push({ value: v, depth: depth + 1 });
+          continue;
+        }
+
+        for (const k of Object.keys(value)) {
+          if (keyRegex.test(k)) return true;
+          queue.push({ value: (value as any)[k], depth: depth + 1 });
+        }
+      }
+      return false;
+    };
+
+    for (const item of menuItems) {
+      const dataRoots = [
+        (item as any).data,
+        (item as any).__data,
+        (item as any).__data?.data,
+        (item as any).__data?.data?.serviceEndpoint,
+        (item as any).serviceEndpoint,
+        (item as any).navigationEndpoint,
+      ];
+      if (dataRoots.some(r => deepHasKey(r))) {
+        (item as any).__ypc_removeMatch = 'endpoint';
+        return item;
+      }
+    }
+
+    const iconMatches = (item: HTMLElement): boolean => {
+      const iconEl = item.querySelector<HTMLElement>('yt-icon');
+      const iconAttr = (iconEl?.getAttribute('icon') || iconEl?.getAttribute('src') || '').toLowerCase();
+      return iconAttr.includes('delete') || iconAttr.includes('remove');
+    };
+
+    const iconCandidates = menuItems.filter(iconMatches);
+    if (iconCandidates.length === 1) {
+      (iconCandidates[0] as any).__ypc_removeMatch = 'icon';
+      return iconCandidates[0];
+    }
+
+    const textCandidates = menuItems.filter((item) => {
+      const t = (item.textContent || '').replace(/\s+/g, ' ').trim();
+      if (!t) return false;
+
+      const matchers: RegExp[] = [
+        /^Remove from/i,
+        /^Quitar de/i,
+        /^Retirer de/i,
+        /^Remover de/i,
+        /^Rimuovi da/i,
+        /^Verwijderen uit/i,
+        /^Usuń z/i,
+        /Удалить из/i,
+        /再生リスト.*削除/,
+        /재생목록.*삭제/,
+        /播放列表.*移除/,
+      ];
+
+      return matchers.some((re) => re.test(t));
+    });
+
+    if (textCandidates.length === 1) {
+      (textCandidates[0] as any).__ypc_removeMatch = 'label';
+      return textCandidates[0];
+    }
+
+    return null;
   };
 
   /**
@@ -195,7 +304,53 @@ if ((window as any).__YPC_CONTENT_SCRIPT_INITIALIZED) {
     URL.revokeObjectURL(url);
 
     const operationType = isDryRun ? 'Dry run completed.' : 'Deletion complete.';
-    alert(`${operationType} A summary file for the ${videoCount} matched videos has been downloaded.`);
+    showNotification(`${operationType} A summary file for the ${videoCount} matched videos has been downloaded.`, 6000);
+  };
+
+  /**
+   * Displays a non-blocking modern in-page notification banner.
+   * @param message The message to display.
+   * @param duration Duration in ms before auto-dismiss (0 for manual dismiss).
+   */
+  const showNotification = (message: string, duration = 4500): void => {
+    const existing = document.getElementById('yt-cleaner-notification');
+    if (existing) existing.remove();
+
+    const banner = document.createElement('div');
+    banner.id = 'yt-cleaner-notification';
+    Object.assign(banner.style, {
+      position: 'fixed', top: '24px', right: '24px', zIndex: '100000',
+      background: 'rgba(28, 28, 30, 0.96)', color: '#ffffff', padding: '12px 18px',
+      borderRadius: '8px', fontSize: '13px', lineHeight: '1.4', maxWidth: '400px',
+      boxShadow: '0 8px 28px rgba(0,0,0,0.6), 0 0 0 1px rgba(255,255,255,0.15)',
+      fontFamily: '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif',
+      display: 'flex', alignItems: 'center', gap: '10px', cursor: 'pointer',
+      transition: 'opacity 0.2s ease, transform 0.2s ease'
+    });
+
+    const textSpan = document.createElement('span');
+    textSpan.textContent = message;
+    textSpan.style.flex = '1';
+
+    const closeBtn = document.createElement('span');
+    closeBtn.textContent = '✕';
+    closeBtn.style.opacity = '0.6';
+    closeBtn.style.fontSize = '12px';
+
+    banner.appendChild(textSpan);
+    banner.appendChild(closeBtn);
+    banner.onclick = () => banner.remove();
+    document.body.appendChild(banner);
+
+    if (duration > 0) {
+      setTimeout(() => {
+        if (document.body.contains(banner)) {
+          banner.style.opacity = '0';
+          banner.style.transform = 'translateY(-8px)';
+          setTimeout(() => banner.remove(), 200);
+        }
+      }, duration);
+    }
   };
 
   /**
@@ -207,18 +362,30 @@ if ((window as any).__YPC_CONTENT_SCRIPT_INITIALIZED) {
     const container = document.createElement('div');
     container.id = STATUS_ID;
     Object.assign(container.style, {
-      // position the toast near the bottom-right but above the cancel button
-      position: 'fixed', bottom: '80px', right: '12px', zIndex: '10000', background: 'rgba(0,0,0,0.8)',
-      color: 'white', padding: '8px 12px', borderRadius: '6px', fontSize: '13px', maxWidth: '320px',
-      boxShadow: '0 2px 8px rgba(0,0,0,0.5)', fontFamily: 'Arial, sans-serif'
+      position: 'fixed', bottom: '80px', right: '16px', zIndex: '10000',
+      background: 'rgba(28, 28, 30, 0.95)', color: '#ffffff', padding: '10px 14px',
+      borderRadius: '8px', fontSize: '13px', maxWidth: '340px',
+      boxShadow: '0 4px 20px rgba(0,0,0,0.5), 0 0 0 1px rgba(255,255,255,0.1)',
+      fontFamily: '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif'
     });
-    container.textContent = 'Loading playlist...';
+    container.innerHTML = `
+      <div id="${STATUS_ID}-text" style="font-weight: 500; line-height: 1.3;">Loading playlist...</div>
+      <div id="${STATUS_ID}-bar-bg" style="width: 100%; height: 4px; background: rgba(255,255,255,0.2); border-radius: 2px; margin-top: 8px; overflow: hidden; display: none;">
+        <div id="${STATUS_ID}-bar-fill" style="width: 0%; height: 100%; background: #3ea6ff; transition: width 0.2s ease;"></div>
+      </div>
+    `;
     document.body.appendChild(container);
   };
 
-  const updateStatus = (text: string) => {
-    const el = document.getElementById(STATUS_ID);
+  const updateStatus = (text: string, percent?: number) => {
+    const el = document.getElementById(`${STATUS_ID}-text`);
     if (el) el.textContent = text;
+    if (percent !== undefined) {
+      const barBg = document.getElementById(`${STATUS_ID}-bar-bg`);
+      const barFill = document.getElementById(`${STATUS_ID}-bar-fill`);
+      if (barBg) barBg.style.display = 'block';
+      if (barFill) barFill.style.width = `${Math.min(100, Math.max(0, percent))}%`;
+    }
   };
 
   const hideStatus = () => {
@@ -236,8 +403,8 @@ if ((window as any).__YPC_CONTENT_SCRIPT_INITIALIZED) {
    * @returns A promise that resolves with the total number of videos found.
    */
   const loadAllVideos = async (showStatusFlag = true): Promise<number> => {
-    const WAIT_GROW_MS = 1400; // how long to wait for growth after each scroll
-    const POLL_INTERVAL = 150;
+    const WAIT_GROW_MS = 1000; // how long to wait for growth after each scroll
+    const POLL_INTERVAL = 60;
     const NO_GROW_THRESHOLD = 2; // quicker stop but still allow a retry
     const MAX_TOTAL_MS = 120_000; // global safety cap
 
@@ -289,7 +456,7 @@ if ((window as any).__YPC_CONTENT_SCRIPT_INITIALIZED) {
       catch (e) { window.scrollBy({ top: window.innerHeight, behavior: 'auto' }); }
 
       // short settle
-      await sleep(220);
+      await sleep(120);
 
       // Update last-node observation
       const nodes = document.querySelectorAll<HTMLElement>(SELECTORS.videoRenderer);
@@ -414,7 +581,33 @@ if ((window as any).__YPC_CONTENT_SCRIPT_INITIALIZED) {
         }
       }
     } catch (e) { /* ignore */ }
-    return { element: videoElement, title, channelName, isWatched, watchPercentage, ageString, videoUrl };
+    const videoId = extractVideoIdFromUrl(videoUrl);
+
+    // Extract duration from thumbnail overlay or metadata
+    const timeOverlay = videoElement.querySelector<HTMLElement>('ytd-thumbnail-overlay-time-status-renderer, span.ytd-thumbnail-overlay-time-status-renderer, #time-status');
+    const durationString = timeOverlay ? timeOverlay.textContent?.trim() : undefined;
+    const durationSeconds = parseDurationToSeconds(durationString);
+
+    return { element: videoElement, title, channelName, isWatched, watchPercentage, ageString, videoUrl, videoId, durationString, durationSeconds };
+  };
+
+  /**
+   * Converts a duration string (e.g., "3:45", "1:02:15", "0:45", "SHORTS") into seconds.
+   * @param durationStr The duration string to parse.
+   * @returns The duration in seconds, or null if unparseable.
+   */
+  const parseDurationToSeconds = (durationStr?: string): number | null => {
+    if (!durationStr) return null;
+    const clean = durationStr.replace(/\s+/g, '').toUpperCase();
+    if (clean.includes('SHORT')) return 60;
+    const parts = clean.split(':').map(p => parseInt(p, 10));
+    if (parts.some(isNaN)) return null;
+    if (parts.length === 2) {
+      return parts[0] * 60 + parts[1];
+    } else if (parts.length === 3) {
+      return parts[0] * 3600 + parts[1] * 60 + parts[2];
+    }
+    return null;
   };
 
   /**
@@ -454,6 +647,7 @@ if ((window as any).__YPC_CONTENT_SCRIPT_INITIALIZED) {
     const candidates: DeletionCandidate[] = [];
     const titleSearchTerms = parseFilterString(filters.titleContains);
     const channelSearchTerms = parseFilterString(filters.channelName);
+    const seenVideoIds = new Set<string>();
 
     let filterAgeInDays: number | null = null;
     if (filters.age && filters.age.value) {
@@ -469,6 +663,8 @@ if ((window as any).__YPC_CONTENT_SCRIPT_INITIALIZED) {
     const activeFilterCount = [
       filters.isWatched?.enabled,
       filters.deleteUnavailable,
+      filters.deleteDuplicates,
+      Boolean(filters.duration),
       titleSearchTerms.length > 0,
       channelSearchTerms.length > 0,
       filterAgeInDays !== null
@@ -491,12 +687,43 @@ if ((window as any).__YPC_CONTENT_SCRIPT_INITIALIZED) {
             reasons.push(`Watched for at least ${value}%`);
           }
         }
-        // Future 'seconds' criteria would go here
       }
 
       if (filters.deleteUnavailable && (video.title === '[Private video]' || video.title === '[Deleted video]')) {
         reasons.push('Is unavailable ([Private video] or [Deleted video])');
       }
+
+      if (filters.deleteDuplicates) {
+        const idKey = video.videoId || (video.title ? video.title.toLowerCase().trim() : null);
+        if (idKey) {
+          if (seenVideoIds.has(idKey)) {
+            reasons.push('Duplicate video (keeps earlier instance)');
+          } else {
+            seenVideoIds.add(idKey);
+          }
+        }
+      }
+
+      if (filters.duration) {
+        const { criteria, value } = filters.duration;
+        if (criteria === 'shorts') {
+          const isShort = (video.durationSeconds !== null && video.durationSeconds !== undefined && video.durationSeconds <= 60) ||
+                          (video.durationString && video.durationString.toUpperCase().includes('SHORT')) ||
+                          (video.videoUrl && video.videoUrl.includes('/shorts/'));
+          if (isShort) {
+            reasons.push('Is a YouTube Short (<= 60s)');
+          }
+        } else if (criteria === 'shorter' && value !== undefined && value > 0) {
+          if (video.durationSeconds !== null && video.durationSeconds !== undefined && video.durationSeconds < value) {
+            reasons.push(`Duration shorter than ${Math.floor(value / 60)}m ${value % 60}s`);
+          }
+        } else if (criteria === 'longer' && value !== undefined && value > 0) {
+          if (video.durationSeconds !== null && video.durationSeconds !== undefined && video.durationSeconds > value) {
+            reasons.push(`Duration longer than ${Math.floor(value / 60)}m ${value % 60}s`);
+          }
+        }
+      }
+
       if (titleSearchTerms.length > 0) {
         const foundTerm = titleSearchTerms.find(term => video.title.toLowerCase().includes(term));
         if (foundTerm) {
@@ -520,7 +747,7 @@ if ((window as any).__YPC_CONTENT_SCRIPT_INITIALIZED) {
       const matchesAnd = reasons.length === activeFilterCount && activeFilterCount > 0;
 
       if ((logic === 'OR' && matchesOr) || (logic === 'AND' && matchesAnd)) {
-        candidates.push({ element: video.element, title: video.title, reasons: reasons, videoUrl: (video as VideoData).videoUrl });
+        candidates.push({ element: video.element, title: video.title, reasons: reasons, videoUrl: (video as VideoData).videoUrl, videoId: (video as VideoData).videoId });
       }
     }
     return candidates;
@@ -535,22 +762,58 @@ if ((window as any).__YPC_CONTENT_SCRIPT_INITIALIZED) {
    * @returns A `DeletionResult` object containing the summary text and the count of deleted videos.
    */
   const deleteVideosAndCreateSummary = async (candidates: DeletionCandidate[], filters: Filters, logic: 'AND' | 'OR', isDryRun: boolean): Promise<DeletionResult> => {
-     const operationVerb = isDryRun ? 'identify' : 'delete';
-     alert(`Found ${candidates.length} videos that match your criteria. The ${operationVerb} process will now begin. Please do not interact with the page.`);
+    const operationVerb = isDryRun ? 'identify' : 'delete';
+    const confirmed = confirm(`Found ${candidates.length} video${candidates.length === 1 ? '' : 's'} that match your criteria.\n\nClick OK to proceed with ${operationVerb}, or Cancel to abort.`);
+    if (!confirmed) {
+      return { summaryText: 'Operation cancelled.', deletedCount: 0 };
+    }
 
     // Prepare on-screen status for per-video progress (disabled for dry run)
     const total = candidates.length;
     const showToasts = !isDryRun;
-    if (showToasts) { showStatus(); updateStatus(`${isDryRun ? 'Identifying' : 'Removing'} 0 of ${total}...`); }
+    if (showToasts) { 
+      showStatus(); 
+      updateStatus(`${isDryRun ? 'Identifying' : 'Removing'} 0 of ${total}...`, 0); 
+    }
 
     const deletedVideoSummaries: string[] = [];
-    const failedRemovals: { title: string, reasons: string[], videoUrl?: string }[] = []; // Track failed removals with optional URL
+    const failedRemovals: { title: string, reasons: string[], videoUrl?: string, videoId?: string }[] = []; // Track failed removals with optional URL
 
     // Helper to avoid including URLs for inaccessible items
     const isUnavailableTitle = (t?: string) => {
       if (!t) return false;
       const tt = t.trim();
       return tt === '[Private video]' || tt === '[Deleted video]';
+    };
+
+    // Track how many were successfully processed (removed or counted in dry run)
+    let processedCount = 0;
+    const processStartTime = Date.now();
+
+    // Helper to reactively wait for the YouTube menu popup to render its menu items
+    const waitForMenuPopup = async (timeout = 700): Promise<HTMLElement | null> => {
+      const start = Date.now();
+      while (Date.now() - start < timeout) {
+        const el = document.querySelector<HTMLElement>(SELECTORS.menuPopup);
+        if (el && el.querySelectorAll(SELECTORS.removeMenuItem).length > 0) {
+          return el;
+        }
+        await sleep(25);
+      }
+      return document.querySelector<HTMLElement>(SELECTORS.menuPopup);
+    };
+
+    // Helper to wait for an element to be removed from the DOM (resolves on removal or timeout)
+    const waitForRemoval = async (el: HTMLElement, timeout = 5000): Promise<void> => {
+      const start = Date.now();
+      return new Promise((resolve) => {
+        const check = () => {
+          if (!document.body.contains(el)) return resolve();
+          if (Date.now() - start > timeout) return resolve();
+          setTimeout(check, 80);
+        };
+        check();
+      });
     };
 
     for (let idx = 0; idx < candidates.length; idx++) {
@@ -563,68 +826,132 @@ if ((window as any).__YPC_CONTENT_SCRIPT_INITIALIZED) {
       const safeTitle = (candidate.title || '(untitled)').replace(/\s+/g, ' ').trim();
       const shortTitle = safeTitle.length > 80 ? safeTitle.slice(0, 77) + '...' : safeTitle;
       const verb = isDryRun ? 'Identifying' : 'Removing';
-      if (showToasts) updateStatus(`${verb} ${idx + 1} of ${total}: ${shortTitle}`);
+
+      const elapsed = Date.now() - processStartTime;
+      const avgPerVideo = idx > 0 ? elapsed / idx : 0;
+      const remainingSec = Math.round((total - idx) * avgPerVideo / 1000);
+      const etaText = idx > 0 && remainingSec > 0 ? ` (ETA: ~${remainingSec}s)` : '';
+      const percent = Math.round((idx / total) * 100);
+
+      if (showToasts) updateStatus(`${verb} ${idx + 1} of ${total}${etaText}: ${shortTitle}`, percent);
 
       const videoElement = candidate.element;
 
-      // For a dry run we don't need to interact with the page; just record the summary.
-      if (isDryRun) {
-        // Include URL when available in dry-run output, but skip for unavailable titles
-        const hasUrl = (candidate.videoUrl && !isUnavailableTitle(candidate.title));
-        if (hasUrl) {
-          // Put Reason line before the URL
-          deletedVideoSummaries.push(`- ${candidate.title}\n  (Reason: ${candidate.reasons.join(', ')})\n  ${candidate.videoUrl}`);
-        } else {
-          deletedVideoSummaries.push(`- ${candidate.title}\n  (Reason: ${candidate.reasons.join(', ')})`);
-        }
-        // small pause so status is perceivable for very fast loops
-        await sleep(60);
-        continue; // Skip actual deletion and avoid scrolling/interacting
-      }
-
-      // Actual deletion path: scroll to the video and interact with the menu to remove it.
       try {
-        videoElement.scrollIntoView({ behavior: 'smooth', block: 'center' });
-        await sleep(200); // Wait for scroll
+        // Scroll the video into view to ensure it's in the DOM
+        try {
+          candidate.element.scrollIntoView({ behavior: 'instant' as ScrollBehavior, block: 'center' });
+        } catch {
+          candidate.element.scrollIntoView(true);
+        }
+        await sleep(80); // Quick settle for DOM render
 
-        const menuButton = videoElement.querySelector<HTMLElement>(SELECTORS.menuButton);
+        const menuButton = candidate.element.querySelector<HTMLElement>(SELECTORS.menuButton);
+        
+        // Skip videos with no menu button (e.g., private/unavailable videos)
         if (!menuButton) {
-          // couldn't find the menu button; cannot remove this video — record as a failure and continue
-          console.error("Could not find menu button for video:", candidate.title);
-          failedRemovals.push({ title: candidate.title, reasons: ['Menu button not found'], videoUrl: candidate.videoUrl });
+          console.log("Skipping video with no menu button (likely private/unavailable):", candidate.title);
+          // For dry run, we still want to include these in the summary
+          if (isDryRun) {
+            const hasUrl = (candidate.videoUrl && !isUnavailableTitle(candidate.title));
+            const reason = 'No menu available (private/unavailable video)';
+            if (hasUrl) {
+              deletedVideoSummaries.push(`- ${candidate.title}\n  (Reason: ${reason})\n  ${candidate.videoUrl}`);
+            } else {
+              deletedVideoSummaries.push(`- ${candidate.title}\n  (Reason: ${reason})`);
+            }
+          }
           continue;
         }
-        await clickElement(menuButton);
 
-        const menuPopup = await waitForElement(SELECTORS.menuPopup, 3000);
-        if (menuPopup) {
-          const menuItems = menuPopup.querySelectorAll<HTMLElement>(SELECTORS.removeMenuItem);
-          const removeItemButton = Array.from(menuItems).find(item =>
-            item.textContent?.trim().startsWith('Remove from')
-          );
-
-          if (removeItemButton) {
-            await clickElement(removeItemButton, 300);
-            const hasUrl = (candidate.videoUrl && !isUnavailableTitle(candidate.title));
-            if (hasUrl) {
-              // Put Reason line before the URL
-              deletedVideoSummaries.push(`- ${candidate.title}\n  (Reason: ${candidate.reasons.join(', ')})\n  ${candidate.videoUrl}`);
-            } else {
-              deletedVideoSummaries.push(`- ${candidate.title}\n  (Reason: ${candidate.reasons.join(', ')})`);
-            }
+        // For dry run, we don't need to interact with the menu, just record the match
+        if (isDryRun) {
+          const hasUrl = (candidate.videoUrl && !isUnavailableTitle(candidate.title));
+          if (hasUrl) {
+            deletedVideoSummaries.push(`- ${candidate.title}\n  (Reason: Would be removed)\n  ${candidate.videoUrl}`);
           } else {
-            console.error("Could not find 'Remove from' button in menu for video:", candidate.title);
-            document.body.click(); // Dismiss menu
-            await sleep(100);
-            failedRemovals.push({ title: candidate.title, reasons: ['Remove button not found in menu'], videoUrl: candidate.videoUrl });
+            deletedVideoSummaries.push(`- ${candidate.title}\n  (Reason: Would be removed)`);
+          }
+          processedCount++;
+          continue;
+        }
+
+        // Click the menu button for actual removal
+        menuButton.click();
+        // Wait reactively for menu popup to appear
+        const menuPopup = await waitForMenuPopup(700);
+        if (!menuPopup) {
+          console.error("Menu did not open for video:", candidate.title);
+          document.body.click(); // Dismiss any open menus
+          await sleep(60);
+          failedRemovals.push({ 
+            title: candidate.title, 
+            reasons: ['Menu did not open'], 
+            videoUrl: candidate.videoUrl, 
+            videoId: candidate.videoId 
+          });
+          // Continue with next video even if menu doesn't open, as it might be a temporary issue
+          continue;
+        }
+
+        // Find and click the remove item button
+        const removeItemButton = findRemoveFromPlaylistMenuItem(menuPopup);
+        if (removeItemButton) {
+          // Click the remove button
+          removeItemButton.click();
+          
+          // Wait for the video to be removed from the DOM reactively
+          await waitForRemoval(candidate.element);
+          processedCount++;
+
+          const hasUrl = (candidate.videoUrl && !isUnavailableTitle(candidate.title));
+          if (hasUrl) {
+            // Put Reason line before the URL
+            deletedVideoSummaries.push(`- ${candidate.title}\n  (Reason: ${candidate.reasons.join(', ')})\n  ${candidate.videoUrl}`);
+          } else {
+            deletedVideoSummaries.push(`- ${candidate.title}\n  (Reason: ${candidate.reasons.join(', ')})`);
           }
         } else {
-          console.error("Could not find menu popup for video:", candidate.title);
-          failedRemovals.push({ title: candidate.title, reasons: ['Menu popup not found'], videoUrl: candidate.videoUrl });
+          // If we found a menu but can't find the remove action, this is a critical error
+          // that likely affects all videos, so we should fail fast
+          console.error("CRITICAL: Could not find remove-from-playlist menu item for video:", 
+            candidate.title, candidate.videoId);
+            
+          // Clean up before showing the alert
+          document.body.click(); // Dismiss menu
+          await sleep(100);
+          
+          if (!hasShownRemoveActionNotFoundAlert) {
+            hasShownRemoveActionNotFoundAlert = true;
+            const errorMsg = "Could not find the 'Remove from playlist' menu action. " +
+              "This can happen when YouTube's interface has changed or is in an unsupported language. " +
+              "Please report this issue to the extension developer.";
+            
+            showNotification(errorMsg, 8000);
+              
+            return { 
+              summaryText: `Stopped: ${errorMsg} (video: ${candidate.title || 'unknown'})`, 
+              deletedCount: processedCount 
+            };
+          }
+          
+          return { 
+            summaryText: `Removal action not found in menu for video: ${candidate.title || 'unknown'}`, 
+            deletedCount: processedCount 
+          };
         }
-      } catch (e) {
-        console.error('Error processing candidate:', candidate.title, e);
-        failedRemovals.push({ title: candidate.title, reasons: ['Exception during removal'], videoUrl: candidate.videoUrl });
+      } catch (error) {
+        console.error("Error removing video:", candidate.title, error);
+        failedRemovals.push({ 
+          title: candidate.title, 
+          reasons: [`Error: ${error instanceof Error ? error.message : String(error)}`],
+          videoUrl: candidate.videoUrl,
+          videoId: candidate.videoId
+        });
+      } finally {
+        // Update progress
+        const progress = Math.round((processedCount + failedRemovals.length) / total * 100);
+        chrome.runtime.sendMessage({ type: 'progress', progress });
       }
     }
 
@@ -643,6 +970,16 @@ if ((window as any).__YPC_CONTENT_SCRIPT_INITIALIZED) {
         }
       }
       if (filters.deleteUnavailable) criteriaHeader += `- Delete Unavailable Videos\n`;
+      if (filters.deleteDuplicates) criteriaHeader += `- Delete Duplicate Videos (keep first)\n`;
+      if (filters.duration) {
+        if (filters.duration.criteria === 'shorts') {
+          criteriaHeader += `- Duration: Shorts (<= 60 seconds)\n`;
+        } else if (filters.duration.criteria === 'shorter') {
+          criteriaHeader += `- Duration: Shorter than ${filters.duration.value || 0}s\n`;
+        } else if (filters.duration.criteria === 'longer') {
+          criteriaHeader += `- Duration: Longer than ${filters.duration.value || 0}s\n`;
+        }
+      }
       if (filters.titleContains) criteriaHeader += `- Title Contains: ${filters.titleContains}\n`;
       if (filters.channelName) criteriaHeader += `- Channel Contains: ${filters.channelName}\n`;
       if (filters.age) criteriaHeader += `- Older Than: ${filters.age.value} ${filters.age.unit}\n`;
@@ -671,7 +1008,7 @@ if ((window as any).__YPC_CONTENT_SCRIPT_INITIALIZED) {
 
     // Final status update then hide (only for non-dry-run)
     if (showToasts) {
-      updateStatus(`${isDryRun ? 'Dry run complete' : 'Deletion complete'}. ${deletedCount} processed.`);
+      updateStatus(`${isDryRun ? 'Dry run complete' : 'Deletion complete'}. ${deletedCount} processed.`, 100);
       await sleep(700);
       hideStatus();
     }
@@ -722,6 +1059,74 @@ if ((window as any).__YPC_CONTENT_SCRIPT_INITIALIZED) {
   };
 
   /**
+   * Exports the loaded playlist videos as a downloadable CSV or JSON file.
+   * @param format 'csv' | 'json'
+   */
+  const exportPlaylistData = async (format: 'csv' | 'json' = 'csv') => {
+    showNotification('Loading all videos in playlist for export...', 3500);
+    await loadAllVideos(true);
+
+    const videoElements = Array.from(document.querySelectorAll<HTMLElement>(SELECTORS.videoRenderer));
+    const allVideos = videoElements.map(extractVideoData).filter((v): v is VideoData => v !== null);
+
+    if (allVideos.length === 0) {
+      showNotification('No videos found in playlist to export.', 3500);
+      return;
+    }
+
+    const now = new Date();
+    const timestamp = now.toISOString().replace(/[:.]/g, '-');
+
+    if (format === 'json') {
+      const exportItems = allVideos.map((v) => ({
+        title: v.title,
+        videoId: v.videoId,
+        videoUrl: v.videoUrl,
+        channelName: v.channelName,
+        duration: v.durationString,
+        durationSeconds: v.durationSeconds,
+        watched: v.isWatched,
+        watchPercentage: v.watchPercentage,
+        age: v.ageString
+      }));
+      const blob = new Blob([JSON.stringify(exportItems, null, 2)], { type: 'application/json' });
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = `youtube-playlist-export-${timestamp}.json`;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      URL.revokeObjectURL(url);
+    } else {
+      const headers = ['Title', 'Video ID', 'URL', 'Channel', 'Duration', 'Watched %', 'Age'];
+      const escapeCsv = (str: string = '') => `"${str.replace(/"/g, '""')}"`;
+      const rows = allVideos.map((v) => [
+        escapeCsv(v.title),
+        escapeCsv(v.videoId || ''),
+        escapeCsv(v.videoUrl || ''),
+        escapeCsv(v.channelName || ''),
+        escapeCsv(v.durationString || ''),
+        escapeCsv(v.watchPercentage !== undefined ? `${v.watchPercentage}%` : (v.isWatched ? 'Watched' : '0%')),
+        escapeCsv(v.ageString || '')
+      ].join(','));
+
+      const csvContent = '\uFEFF' + [headers.join(','), ...rows].join('\n');
+      const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = `youtube-playlist-export-${timestamp}.csv`;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      URL.revokeObjectURL(url);
+    }
+
+    showNotification(`Exported ${allVideos.length} playlist videos successfully.`, 4500);
+  };
+
+  /**
    * The main entry point for the deletion process, triggered by a message from the popup.
    * @param filters The filter criteria from the popup.
    * @param logic The matching logic ('AND' or 'OR').
@@ -765,17 +1170,24 @@ if ((window as any).__YPC_CONTENT_SCRIPT_INITIALIZED) {
       return false; // responded synchronously
     }
 
+    if (request.action === 'exportPlaylist') {
+      exportPlaylistData(request.format || 'csv');
+      sendResponse({ status: 'started' });
+      return false;
+    }
+
     if (request.action === 'deleteVideos') {
       // Type guard to ensure required parameters are present
       if (request.filters && request.logic && typeof request.isDryRun === 'boolean') {
         handleDeleteRequest(request.filters, request.logic, request.isDryRun);
         sendResponse({ status: 'started' });
       } else {
-        console.error('deleteVideos action received without required parameters.');
-        sendResponse({ status: 'error', message: 'Missing parameters for deleteVideos action.' });
+        sendResponse({ status: 'invalid' });
       }
-      return false; // responded synchronously
+      return false;
     }
-  });
-}
 
+    return false;
+  });
+
+} // end of if (!__YPC_CONTENT_SCRIPT_INITIALIZED) block
