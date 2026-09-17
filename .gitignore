@@ -1,18 +1,63 @@
+# Operating System files
+.DS_Store
+**/.DS_Store
+._*
+Thumbs.db
+desktop.ini
+
+# Dependencies & Build artifacts
+/node_modules/
+/dist/
 /tmp
 /out-tsc
-
-/node_modules
+/.pnp
+.pnp.js
 npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
-/.pnp
-.pnp.js
-
-.vscode/*
-.env
 *.log
-/dist/
-/node_modules/
-/.idea/
-.DS_Store
-/docs
+
+# Release Packages & Distribution Archives
+package/*.zip
+*.zip
+
+# Design Source Files & Duplicate Assets
+package/*.afphoto
+*.afphoto
+*.psd
+* copy.*
+* copy
+
+# IDEs & Editor configurations
+.vscode/*
+.idea/
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.sw?
+
+# AI Coding Assistants & Workspace Caches
+.serena/
+.kilo/
+.zenflow/
+.claude/
+.gemini/
+
+# Environment, Secrets & Extension Signing Keys
+.env
+.env.*
+*.pem
+*.key
+*.p8
+*.p12
+*.crx
+
+# Internal Documentation & Scratch Reviews
+/docs/
+CODE_REVIEW.md
+CODE_REVIEW_RESPONSE.md
+IMPLEMENTATION.md
+TASK.md
+tasks.md
+session_context.md
