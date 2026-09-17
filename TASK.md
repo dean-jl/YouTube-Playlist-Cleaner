@@ -12,3 +12,4 @@
 - [x] Implement multi-browser store packaging script (Chrome, Edge, Firefox, Safari) and verification suite in scripts/package.js and package.json (2026-09-16)
 - [x] Update AGENTS.md and CLAUDE.md to accurately reflect the YouTube Playlist Cleaner codebase (2026-09-16)
 - [x] Bump version to 1.3.0 in package.json, package-lock.json, and src/manifest.json (2026-09-16)
+- [x] Audit repository for public publishing: expand .gitignore (release zips, design files, signing keys, AI caches, internal review docs) and sanitize local path leaks (2026-09-16)

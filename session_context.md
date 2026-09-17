@@ -3,9 +3,9 @@
 ## Session: 2026-09-16
 ### Accomplished:
 - Identified root cause of lingering bottom-left toast notifications during batch deletion (YouTube native `tp-yt-paper-toast` / `ytd-notification-action-renderer` queuing up for each deleted video).
-- Implemented Option A: Injected a temporary `<style>` block (`#yt-cleaner-suppress-toasts`) in [src/content.ts](file:///Users/dean/WebstormProjects/YouTube-Playlist-Cleaner%20%28Public%29/src/content.ts) during deletion operations to suppress YouTube's native bottom-left toast notifications.
+- Implemented Option A: Injected a temporary `<style>` block (`#yt-cleaner-suppress-toasts`) in [src/content.ts](src/content.ts) during deletion operations to suppress YouTube's native bottom-left toast notifications.
 - Added automatic cleanup (`restoreYouTubeToasts`) upon deletion completion, cancellation, or error to unsuppress styles and dismiss any lingering toast elements.
-- Created unit tests in [tests/toast_suppression.test.mjs](file:///Users/dean/WebstormProjects/YouTube-Playlist-Cleaner%20%28Public%29/tests/toast_suppression.test.mjs) covering expected usage, idempotence edge case, and resilient error handling.
+- Created unit tests in [tests/toast_suppression.test.mjs](tests/toast_suppression.test.mjs) covering expected usage, idempotence edge case, and resilient error handling.
 - Added `npm test` script to `package.json` and verified all tests pass and build succeeds.
 - Bumped project version to `1.3.0` across `package.json`, `package-lock.json`, and `src/manifest.json`.
 - Updated `AGENTS.md` and `CLAUDE.md` to accurately reflect the YouTube Playlist Cleaner codebase, architecture, workflows, and rules.
@@ -29,6 +29,14 @@
 - Updated the in-popup Help & Guide modal (`#help-modal`) in `src/popup.html` and `src/popup.css` with clear explanations for all filter options (duplicates, duration/Shorts, watched %, unavailable, age, title/channel, match logic) as well as the new export tools and preferences memory.
 - Updated `README.md` to document duplicate removal, duration/Shorts filtering, CSV export, and settings persistence.
 - Tested, rebuilt, and packaged release bundles with `npm test && npm run build && npm run package`.
+- Performed public repository audit and expanded `.gitignore` with comprehensive rules:
+  - Release archives (`package/*.zip`, `*.zip`) to keep repo size clean.
+  - Proprietary source design files (`package/*.afphoto`, `*.psd`) and duplicate image assets (`* copy.*`).
+  - AI assistant workspace cache directories (`.serena/`, `.kilo/`, `.zenflow/`, `.claude/`, `.gemini/`).
+  - Secret & extension signing keys (`.env*`, `*.pem`, `*.key`, `*.p8`, `*.p12`, `*.crx`).
+  - Internal scratch review documentation (`CODE_REVIEW*.md`, `IMPLEMENTATION*.md`).
+- Sanitized `SECURITY.md` links to point to `dean-jl/YouTube-Playlist-Cleaner` instead of outdated template references.
+- Scrubbed absolute user filesystem paths from all documentation and session logs to protect privacy.
 
 ### Current State:
-- Branch `feature/performance-and-enhancements` contains all enhancements, optimizations, restored confirmation dialogs, expanded popup pane layout, and complete Help/README documentation. All 12 unit tests pass and store packages pass audits. Ready for testing and merge.
+- Branch `feature/performance-and-enhancements` contains all enhancements, optimizations, restored confirmation dialogs, expanded popup pane layout, complete documentation, and fully hardened `.gitignore` for public release. All 12 unit tests pass and store packages pass audits. Ready for testing and merge.
