@@ -711,7 +711,7 @@ if ((window as any).__YPC_CONTENT_SCRIPT_INITIALIZED) {
                           (video.durationString && video.durationString.toUpperCase().includes('SHORT')) ||
                           (video.videoUrl && video.videoUrl.includes('/shorts/'));
           if (isShort) {
-            reasons.push('Is a YouTube Short (≤ 60s)');
+            reasons.push('Is a YouTube Short (<= 60s)');
           }
         } else if (criteria === 'shorter' && value !== undefined && value > 0) {
           if (video.durationSeconds !== null && video.durationSeconds !== undefined && video.durationSeconds < value) {
@@ -970,7 +970,7 @@ if ((window as any).__YPC_CONTENT_SCRIPT_INITIALIZED) {
       if (filters.deleteDuplicates) criteriaHeader += `- Delete Duplicate Videos (keep first)\n`;
       if (filters.duration) {
         if (filters.duration.criteria === 'shorts') {
-          criteriaHeader += `- Duration: Shorts (≤ 60 seconds)\n`;
+          criteriaHeader += `- Duration: Shorts (<= 60 seconds)\n`;
         } else if (filters.duration.criteria === 'shorter') {
           criteriaHeader += `- Duration: Shorter than ${filters.duration.value || 0}s\n`;
         } else if (filters.duration.criteria === 'longer') {

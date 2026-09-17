@@ -1,6 +1,7 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
+  <meta charset="UTF-8">
   <title>YouTube Playlist Cleaner</title>
   <link rel="stylesheet" type="text/css" href="popup.css">
 </head>
@@ -82,7 +83,7 @@
           <label for="duration-criteria">Criteria:</label>
           <div class="duration-controls">
             <select id="duration-criteria" aria-label="Duration criteria">
-              <option value="shorts" selected>Shorts (≤ 60s)</option>
+              <option value="shorts" selected>Shorts (&le; 60s)</option>
               <option value="shorter">Shorter than</option>
               <option value="longer">Longer than</option>
             </select>
@@ -124,8 +125,8 @@
         <h3>Filter Options</h3>
         <ul>
           <li><strong>Duplicate Videos:</strong> Detects videos appearing more than once in the playlist. The earliest/first instance is preserved, while subsequent copies are selected for removal.</li>
-          <li><strong>Duration / Shorts:</strong> Target YouTube Shorts (≤ 60s) or filter videos shorter or longer than a custom minute and second threshold.</li>
-          <li><strong>Watched Videos:</strong> Filter videos you have already watched (either any played progress or at least a specified percentage 1–100%).</li>
+          <li><strong>Duration / Shorts:</strong> Target YouTube Shorts (&le; 60s) or filter videos shorter or longer than a custom minute and second threshold.</li>
+          <li><strong>Watched Videos:</strong> Filter videos you have already watched (either any played progress or at least a specified percentage 1-100%).</li>
           <li><strong>Unavailable Videos:</strong> Targets private or deleted videos. (Requires selecting "Show unavailable videos" in YouTube's playlist menu first).</li>
           <li><strong>Age:</strong> Targets videos published older than a specified number of days, weeks, months, or years.</li>
           <li><strong>Title &amp; Channel:</strong> Comma-separated keywords or exact phrases in double quotes (e.g. <code>"let's play", tutorial</code>).</li>
