@@ -9,6 +9,7 @@ Guidance for Claude Code (claude.ai/code) and AI coding assistants working in th
 The **YouTube Playlist Cleaner** is a Manifest V3 browser extension for Google Chrome and Microsoft Edge that allows users to selectively filter, preview, and batch delete videos from their YouTube playlists.
 
 ### Core User Journey
+
 1. **Navigate**: User navigates to a YouTube playlist page (`youtube.com/playlist?list=...`).
 2. **Configure**: User opens the extension popup, sets deletion filters (title keywords, channel names, age in days/weeks/months/years, watched status/percentage, unavailable/private videos), and chooses match logic (AND / OR) or Dry Run mode.
 3. **Scan & Load**: Extension auto-scrolls to load all playlist items into the DOM.
@@ -75,6 +76,7 @@ npm run verify:package
 ## 🏁 Session Wrap-Up Procedure
 
 When completing a task or wrapping up a session:
+
 1. Summarize tasks completed, key architectural decisions, and verification results in the response.
 2. Update `session_context.md`.
 3. Update `TASK.md` marking completed tasks and tracking future work.
