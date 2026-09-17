@@ -107,34 +107,167 @@ document.addEventListener('DOMContentLoaded', () => {
  * Initializes the event listeners and logic for the main UI.
  * This function is only called if the page is a valid YouTube playlist.
  */
+const SETTINGS_KEY = 'yt_playlist_cleaner_settings';
+
+interface SavedPreferences {
+  logic?: string;
+  titleContains?: string;
+  channelName?: string;
+  ageValue?: string;
+  ageUnit?: string;
+  isWatched?: boolean;
+  watchedCriteria?: string;
+  watchedValue?: string;
+  deleteUnavailable?: boolean;
+  deleteDuplicates?: boolean;
+  durationEnabled?: boolean;
+  durationCriteria?: string;
+  durationMinutes?: string;
+  durationSeconds?: string;
+  dryRun?: boolean;
+}
+
+/**
+ * Saves the user's current filter selections to localStorage.
+ */
+function savePreferences(): void {
+  try {
+    const logicInput = document.querySelector('input[name="logic"]:checked') as HTMLInputElement;
+    const prefs: SavedPreferences = {
+      logic: logicInput?.value || 'OR',
+      titleContains: (getElementById('title-contains', HTMLInputElement))?.value || '',
+      channelName: (getElementById('channel-name', HTMLInputElement))?.value || '',
+      ageValue: (getElementById('video-age-value', HTMLInputElement))?.value || '',
+      ageUnit: (getElementById('video-age-unit', HTMLSelectElement))?.value || 'days',
+      isWatched: (getElementById('is-watched', HTMLInputElement))?.checked || false,
+      watchedCriteria: (getElementById('watched-criteria', HTMLSelectElement))?.value || 'any',
+      watchedValue: (getElementById('watched-value', HTMLInputElement))?.value || '',
+      deleteUnavailable: (getElementById('delete-unavailable', HTMLInputElement))?.checked || false,
+      deleteDuplicates: (getElementById('delete-duplicates', HTMLInputElement))?.checked || false,
+      durationEnabled: (getElementById('duration-filter-enabled', HTMLInputElement))?.checked || false,
+      durationCriteria: (getElementById('duration-criteria', HTMLSelectElement))?.value || 'shorts',
+      durationMinutes: (getElementById('duration-minutes', HTMLInputElement))?.value || '',
+      durationSeconds: (getElementById('duration-seconds', HTMLInputElement))?.value || '',
+      dryRun: (getElementById('dry-run', HTMLInputElement))?.checked || false
+    };
+    localStorage.setItem(SETTINGS_KEY, JSON.stringify(prefs));
+  } catch (err) {
+    console.error('Failed to save filter preferences:', err);
+  }
+}
+
+/**
+ * Restores user's filter selections from localStorage if previously saved.
+ */
+function loadPreferences(): void {
+  try {
+    const data = localStorage.getItem(SETTINGS_KEY);
+    if (!data) return;
+    const prefs: SavedPreferences = JSON.parse(data);
+
+    if (prefs.logic) {
+      const radio = document.querySelector(`input[name="logic"][value="${prefs.logic}"]`) as HTMLInputElement;
+      if (radio) radio.checked = true;
+    }
+    const titleInput = getElementById('title-contains', HTMLInputElement);
+    if (titleInput && prefs.titleContains !== undefined) titleInput.value = prefs.titleContains;
+
+    const channelInput = getElementById('channel-name', HTMLInputElement);
+    if (channelInput && prefs.channelName !== undefined) channelInput.value = prefs.channelName;
+
+    const ageValue = getElementById('video-age-value', HTMLInputElement);
+    if (ageValue && prefs.ageValue !== undefined) ageValue.value = prefs.ageValue;
+
+    const ageUnit = getElementById('video-age-unit', HTMLSelectElement);
+    if (ageUnit && prefs.ageUnit !== undefined) ageUnit.value = prefs.ageUnit;
+
+    const isWatched = getElementById('is-watched', HTMLInputElement);
+    const watchedOpts = getElementById('watched-options', HTMLDivElement);
+    if (isWatched && prefs.isWatched !== undefined) {
+      isWatched.checked = prefs.isWatched;
+      if (watchedOpts) watchedOpts.style.display = prefs.isWatched ? 'flex' : 'none';
+    }
+
+    const watchedCrit = getElementById('watched-criteria', HTMLSelectElement);
+    const watchedVal = getElementById('watched-value', HTMLInputElement);
+    if (watchedCrit && prefs.watchedCriteria !== undefined) {
+      watchedCrit.value = prefs.watchedCriteria;
+      if (watchedVal) {
+        watchedVal.style.display = prefs.watchedCriteria === 'percent' ? 'inline-block' : 'none';
+      }
+    }
+    if (watchedVal && prefs.watchedValue !== undefined) watchedVal.value = prefs.watchedValue;
+
+    const delUnavail = getElementById('delete-unavailable', HTMLInputElement);
+    if (delUnavail && prefs.deleteUnavailable !== undefined) delUnavail.checked = prefs.deleteUnavailable;
+
+    const delDupes = getElementById('delete-duplicates', HTMLInputElement);
+    if (delDupes && prefs.deleteDuplicates !== undefined) delDupes.checked = prefs.deleteDuplicates;
+
+    const durEnabled = getElementById('duration-filter-enabled', HTMLInputElement);
+    const durOpts = getElementById('duration-options', HTMLDivElement);
+    if (durEnabled && prefs.durationEnabled !== undefined) {
+      durEnabled.checked = prefs.durationEnabled;
+      if (durOpts) durOpts.style.display = prefs.durationEnabled ? 'grid' : 'none';
+    }
+
+    const durCrit = getElementById('duration-criteria', HTMLSelectElement);
+    const durTimeInputs = document.getElementById('duration-time-inputs') as HTMLElement | null;
+    if (durCrit && prefs.durationCriteria !== undefined) {
+      durCrit.value = prefs.durationCriteria;
+      if (durTimeInputs) {
+        durTimeInputs.style.display = (prefs.durationCriteria === 'shorter' || prefs.durationCriteria === 'longer') ? 'inline-flex' : 'none';
+      }
+    }
+
+    const durMin = getElementById('duration-minutes', HTMLInputElement);
+    if (durMin && prefs.durationMinutes !== undefined) durMin.value = prefs.durationMinutes;
+
+    const durSec = getElementById('duration-seconds', HTMLInputElement);
+    if (durSec && prefs.durationSeconds !== undefined) durSec.value = prefs.durationSeconds;
+
+    const dryRun = getElementById('dry-run', HTMLInputElement);
+    if (dryRun && prefs.dryRun !== undefined) dryRun.checked = prefs.dryRun;
+  } catch (err) {
+    console.error('Failed to load filter preferences:', err);
+  }
+}
+
+/**
+ * Initializes the event listeners and logic for the main UI.
+ * This function is only called if the page is a valid YouTube playlist.
+ */
 function initializeMainContent() {
   const deleteButton = getElementById('delete-button', HTMLButtonElement);
+  const exportButton = getElementById('export-button', HTMLButtonElement);
   const helpButton = getElementById('help-button', HTMLButtonElement);
   const helpModal = getElementById('help-modal', HTMLDivElement);
   const helpBackdrop = getElementById('help-backdrop', HTMLDivElement);
-  // top close removed; we will focus the bottom close button when opening the help modal
   const isWatchedCheckbox = getElementById('is-watched', HTMLInputElement);
   const watchedOptionsDiv = getElementById('watched-options', HTMLDivElement);
   const watchedCriteriaSelect = getElementById('watched-criteria', HTMLSelectElement);
   const watchedValueInput = getElementById('watched-value', HTMLInputElement);
 
+  const durationEnabledCheckbox = getElementById('duration-filter-enabled', HTMLInputElement);
+  const durationOptionsDiv = getElementById('duration-options', HTMLDivElement);
+  const durationCriteriaSelect = getElementById('duration-criteria', HTMLSelectElement);
+  const durationTimeInputs = document.getElementById('duration-time-inputs') as HTMLElement | null;
+
+  // Restore saved preferences
+  loadPreferences();
+
   // Help modal wiring
   const openHelp = () => {
     if (!helpModal) return;
     helpModal.setAttribute('aria-hidden', 'false');
-    // focus the bottom close button for accessibility
-    // focus the modal content so the user starts at the top
     const content = document.getElementById('help-content') as HTMLDivElement | null;
     if (content) content.focus();
-    // activate focus trap
     activateFocusTrap(content);
   };
   const closeHelp = () => {
     if (!helpModal) return;
     helpModal.setAttribute('aria-hidden', 'true');
-    // return focus to help button
     if (helpButton) helpButton.focus();
-    // deactivate focus trap
     deactivateFocusTrap();
   };
 
@@ -190,15 +323,13 @@ function initializeMainContent() {
   // --- Event Listeners for Watched Filter ---
   if (isWatchedCheckbox && watchedOptionsDiv) {
     isWatchedCheckbox.addEventListener('change', () => {
-      // Use 'flex' so the CSS flex row layout for #watched-options is honored
       watchedOptionsDiv.style.display = isWatchedCheckbox.checked ? 'flex' : 'none';
+      savePreferences();
     });
   }
 
   if (watchedCriteriaSelect && watchedValueInput) {
     watchedCriteriaSelect.addEventListener('change', () => {
-      // Only the 'percent' option is supported here. Show the numeric input inline
-      // and constrain it to whole numbers between 1 and 100.
       const showValueInput = watchedCriteriaSelect.value === 'percent';
       watchedValueInput.style.display = showValueInput ? 'inline-block' : 'none';
       if (watchedCriteriaSelect.value === 'percent') {
@@ -206,27 +337,23 @@ function initializeMainContent() {
         watchedValueInput.setAttribute('min', '1');
         watchedValueInput.setAttribute('max', '100');
         watchedValueInput.setAttribute('step', '1');
-        // Ensure input mode helps mobile keyboards (harmless on desktop)
         watchedValueInput.setAttribute('inputmode', 'numeric');
       } else {
-        // Clear constraints for other (future) criteria
         watchedValueInput.removeAttribute('min');
         watchedValueInput.removeAttribute('max');
         watchedValueInput.removeAttribute('step');
         watchedValueInput.removeAttribute('inputmode');
       }
+      savePreferences();
     });
 
-    // Enforce whole numbers and clamp between 1 and 100 while the user types
     watchedValueInput.addEventListener('input', () => {
       const raw = watchedValueInput.value;
       if (!raw) return;
-      // If user types a decimal, truncate to integer
       if (raw.includes('.')) {
         const intVal = Math.floor(parseFloat(raw));
         watchedValueInput.value = isNaN(intVal) ? '' : String(intVal);
       }
-      // Clamp to min/max if attributes are present
       const minAttr = watchedValueInput.getAttribute('min');
       const maxAttr = watchedValueInput.getAttribute('max');
       const min = minAttr ? parseInt(minAttr, 10) : undefined;
@@ -236,11 +363,59 @@ function initializeMainContent() {
         if (min !== undefined && current < min) watchedValueInput.value = String(min);
         if (max !== undefined && current > max) watchedValueInput.value = String(max);
       }
+      savePreferences();
     });
   }
 
+  // --- Event Listeners for Duration Filter ---
+  if (durationEnabledCheckbox && durationOptionsDiv) {
+    durationEnabledCheckbox.addEventListener('change', () => {
+      durationOptionsDiv.style.display = durationEnabledCheckbox.checked ? 'grid' : 'none';
+      savePreferences();
+    });
+  }
+
+  if (durationCriteriaSelect && durationTimeInputs) {
+    durationCriteriaSelect.addEventListener('change', () => {
+      const isCustomTime = durationCriteriaSelect.value === 'shorter' || durationCriteriaSelect.value === 'longer';
+      durationTimeInputs.style.display = isCustomTime ? 'inline-flex' : 'none';
+      savePreferences();
+    });
+  }
+
+  // Auto-save on inputs
+  const autoSaveInputs = ['title-contains', 'channel-name', 'video-age-value', 'video-age-unit', 'delete-unavailable', 'delete-duplicates', 'duration-minutes', 'duration-seconds', 'dry-run'];
+  for (const id of autoSaveInputs) {
+    const el = document.getElementById(id);
+    if (el) {
+      el.addEventListener('change', savePreferences);
+    }
+  }
+
+  // --- Playlist Export Button ---
+  if (exportButton) {
+    if (!exportButton.dataset.listenerAttached) {
+      exportButton.dataset.listenerAttached = 'true';
+      exportButton.addEventListener('click', () => {
+        savePreferences();
+        chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
+          if (tabs && tabs[0]?.id) {
+            chrome.tabs.sendMessage(tabs[0].id, { action: 'exportPlaylist', format: 'csv' }, () => {
+              if (chrome.runtime.lastError) {
+                console.error('Error sending export message:', chrome.runtime.lastError.message);
+                alert('Could not connect to the YouTube playlist page. Please try refreshing.');
+              } else {
+                window.close();
+              }
+            });
+          }
+        });
+      });
+    }
+  }
+
+  // --- Delete Button Handler ---
   if (deleteButton) {
-    // Avoid adding multiple listeners if this function is ever called more than once
     if (deleteButton.dataset.listenerAttached) return;
     deleteButton.dataset.listenerAttached = 'true';
 
@@ -254,6 +429,7 @@ function initializeMainContent() {
         const titleContainsInput = getElementById('title-contains', HTMLInputElement);
         const channelNameInput = getElementById('channel-name', HTMLInputElement);
         const deleteUnavailableCheckbox = getElementById('delete-unavailable', HTMLInputElement);
+        const deleteDuplicatesCheckbox = getElementById('delete-duplicates', HTMLInputElement);
         const dryRunCheckbox = getElementById('dry-run', HTMLInputElement);
 
         const ageValueStr = ageValueInput?.value;
@@ -261,13 +437,14 @@ function initializeMainContent() {
         const titleContains = titleContainsInput?.value;
         const channelName = channelNameInput?.value;
         const deleteUnavailable = deleteUnavailableCheckbox?.checked || false;
+        const deleteDuplicates = deleteDuplicatesCheckbox?.checked || false;
         const isDryRun = dryRunCheckbox?.checked || false;
 
         if (ageValueStr) {
           const ageValue = parseInt(ageValueStr, 10);
           if (isNaN(ageValue) || ageValue <= 0) {
             alert('Video age must be a positive number.');
-            return; // Stop the process
+            return;
           }
         }
         
@@ -275,14 +452,12 @@ function initializeMainContent() {
         const watchedCriteria = watchedCriteriaSelect?.value || 'any';
         const watchedValueStr = watchedValueInput?.value;
         let watchedValue = 0;
-        // Parse and validate watchedValue if provided
         if (watchedValueStr) {
           const parsedValue = parseInt(watchedValueStr, 10);
           if (isNaN(parsedValue) || parsedValue <= 0) {
             alert('Watched value must be a positive whole number.');
             return;
           }
-          // If percent criteria is selected, enforce 1-100 range
           if (watchedCriteria === 'percent' && (parsedValue < 1 || parsedValue > 100)) {
             alert('Please enter a percentage between 1 and 100.');
             return;
@@ -290,53 +465,73 @@ function initializeMainContent() {
           watchedValue = parsedValue;
         }
 
-        // Only enable the watched filter if the checkbox is checked and the chosen criteria is valid.
         let isWatchedEnabled = isWatchedCheckbox?.checked || false;
         if (isWatchedEnabled) {
           if (watchedCriteria === 'percent') {
-            // require a provided watchedValue > 0
             if (!watchedValue || watchedValue <= 0) {
               alert('Please enter a percentage between 1 and 100 for the watched criteria.');
               return;
             }
             isWatchedEnabled = true;
           } else {
-            // 'any' criteria is valid so keep enabled
             isWatchedEnabled = true;
           }
         }
 
-        const filters = {
-           titleContains: titleContains,
-           channelName: channelName,
-           isWatched: {
-             enabled: isWatchedEnabled,
-             criteria: watchedCriteria,
-             value: watchedValue,
-           },
-           deleteUnavailable: deleteUnavailable,
-           age: (ageValueStr && ageUnit) ? { value: parseInt(ageValueStr, 10), unit: ageUnit } : undefined,
-         };
+        // Build duration filter object
+        let durationFilter: { criteria: 'shorts' | 'shorter' | 'longer'; value?: number } | undefined = undefined;
+        if (durationEnabledCheckbox?.checked) {
+          const crit = (durationCriteriaSelect?.value as 'shorts' | 'shorter' | 'longer') || 'shorts';
+          if (crit === 'shorts') {
+            durationFilter = { criteria: 'shorts', value: 60 };
+          } else {
+            const minInput = getElementById('duration-minutes', HTMLInputElement);
+            const secInput = getElementById('duration-seconds', HTMLInputElement);
+            const min = parseInt(minInput?.value || '0', 10);
+            const sec = parseInt(secInput?.value || '0', 10);
+            const totalSec = (isNaN(min) ? 0 : min) * 60 + (isNaN(sec) ? 0 : sec);
+            if (totalSec <= 0) {
+              alert('Please enter a duration greater than 0 for the duration filter.');
+              return;
+            }
+            durationFilter = { criteria: crit, value: totalSec };
+          }
+        }
 
-         // Send the command to the content script
-         chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
-           if (tabs && tabs.length > 0 && tabs[0].id) {
-             chrome.tabs.sendMessage(tabs[0].id, { action: 'deleteVideos', filters: filters, logic: logic, isDryRun: isDryRun }, () => {
-                if (chrome.runtime.lastError) {
-                  console.error('Error sending message:', chrome.runtime.lastError.message);
-                  // This alert should no longer be needed with the handshake, but is kept as a fallback.
-                  alert('Could not connect to the YouTube playlist page. Please ensure you are on a valid playlist and try again.');
-                } else {
-                  window.close();
-                }
-              });
-           } else {
-             console.error('Could not find active tab to send message to.');
-           }
-         });
-       } catch (error) {
-         console.error("An error occurred in the popup's click handler:", error);
-       }
-     });
-   }
+        savePreferences();
+
+        const filters = {
+          titleContains: titleContains,
+          channelName: channelName,
+          isWatched: {
+            enabled: isWatchedEnabled,
+            criteria: watchedCriteria,
+            value: watchedValue,
+          },
+          deleteUnavailable: deleteUnavailable,
+          deleteDuplicates: deleteDuplicates,
+          duration: durationFilter,
+          age: (ageValueStr && ageUnit) ? { value: parseInt(ageValueStr, 10), unit: ageUnit } : undefined,
+        };
+
+        // Send the command to the content script
+        chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
+          if (tabs && tabs.length > 0 && tabs[0].id) {
+            chrome.tabs.sendMessage(tabs[0].id, { action: 'deleteVideos', filters: filters, logic: logic, isDryRun: isDryRun }, () => {
+              if (chrome.runtime.lastError) {
+                console.error('Error sending message:', chrome.runtime.lastError.message);
+                alert('Could not connect to the YouTube playlist page. Please ensure you are on a valid playlist and try again.');
+              } else {
+                window.close();
+              }
+            });
+          } else {
+            console.error('Could not find active tab to send message to.');
+          }
+        });
+      } catch (error) {
+        console.error("An error occurred in the popup's click handler:", error);
+      }
+    });
+  }
 }

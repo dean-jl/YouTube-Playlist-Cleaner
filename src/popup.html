@@ -69,12 +69,42 @@
       </div>
       <div class="filter-group">
         <label>
+          <input type="checkbox" id="delete-duplicates">
+          Delete duplicate videos (keeps first instance)
+        </label>
+      </div>
+      <div class="filter-group">
+        <label>
+          <input type="checkbox" id="duration-filter-enabled">
+          Filter by duration
+        </label>
+        <div id="duration-options" class="filter-group" style="display: none; padding-left: 20px;">
+          <label for="duration-criteria">Criteria:</label>
+          <div class="duration-controls">
+            <select id="duration-criteria" aria-label="Duration criteria">
+              <option value="shorts" selected>Shorts (≤ 60s)</option>
+              <option value="shorter">Shorter than</option>
+              <option value="longer">Longer than</option>
+            </select>
+            <div id="duration-time-inputs" style="display: none; gap: 4px; align-items: center;">
+              <input type="number" id="duration-minutes" aria-label="Duration minutes" min="0" max="999" placeholder="min" style="width: 45px;">
+              <span>:</span>
+              <input type="number" id="duration-seconds" aria-label="Duration seconds" min="0" max="59" placeholder="sec" style="width: 45px;">
+            </div>
+          </div>
+        </div>
+      </div>
+      <div class="filter-group">
+        <label>
           <input type="checkbox" id="dry-run">
           Dry Run (only generate report, do not delete)
         </label>
       </div>
     </div>
-    <button id="delete-button">Delete Selected</button>
+    <div class="action-buttons">
+      <button id="delete-button">Delete Selected</button>
+      <button id="export-button" class="export-button" type="button" title="Export current playlist to CSV">Export Playlist (CSV)</button>
+    </div>
   </div>
 
   <!-- Error message, shown on invalid pages -->
