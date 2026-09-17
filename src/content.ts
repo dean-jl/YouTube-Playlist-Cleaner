@@ -763,7 +763,7 @@ if ((window as any).__YPC_CONTENT_SCRIPT_INITIALIZED) {
    */
   const deleteVideosAndCreateSummary = async (candidates: DeletionCandidate[], filters: Filters, logic: 'AND' | 'OR', isDryRun: boolean): Promise<DeletionResult> => {
     const operationVerb = isDryRun ? 'identify' : 'delete';
-    showNotification(`Found ${candidates.length} videos that match your criteria. Starting ${operationVerb} process...`, 4000);
+    alert(`Found ${candidates.length} videos that match your criteria. The ${operationVerb} process will now begin. Please do not interact with the page.`);
 
     // Prepare on-screen status for per-video progress (disabled for dry run)
     const total = candidates.length;
@@ -1134,11 +1134,11 @@ if ((window as any).__YPC_CONTENT_SCRIPT_INITIALIZED) {
     createCancelButton();
     try {
       const operationType = isDryRun ? 'dry run' : 'deletion';
-      showNotification(`Starting ${operationType}... Scrolling down to load all videos in playlist.`, 3500);
+      alert(`Starting ${operationType}... The extension will now scroll down to load all videos in your playlist. Please wait.`);
       // Disable on-screen status/toasts during dry run
       await loadAllVideos(!isDryRun);
       if (isCancelled) {
-        showNotification('Operation cancelled during video loading.', 4000);
+        alert('Operation cancelled during video loading.');
         return;
       }
       const videoElements = Array.from(document.querySelectorAll<HTMLElement>(SELECTORS.videoRenderer));
@@ -1149,11 +1149,11 @@ if ((window as any).__YPC_CONTENT_SCRIPT_INITIALIZED) {
         const result = await deleteVideosAndCreateSummary(videosToDelete, filters, logic, isDryRun);
         downloadSummary(result.summaryText, result.deletedCount, isDryRun);
       } else {
-        showNotification('No videos found matching your criteria.', 4000);
+        alert('No videos found matching your criteria.');
       }
     } catch (error) {
       console.error('An error occurred during the operation:', error);
-      showNotification('An unexpected error occurred. Check the console for details.', 5000);
+      alert('An unexpected error occurred. Check the console for details.');
     } finally {
       removeCancelButton();
       isCancelled = false;
